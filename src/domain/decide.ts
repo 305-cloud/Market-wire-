@@ -36,6 +36,11 @@ export interface Rejection {
 
 export const MAX_WRONG_PICKUP_CODES = 5
 
+function buyerOpenCount(state: MarketState, buyer: TraderId): number {
+  return [...state.requests.values()].filter(r => r.requesterId === buyer &&
+    (r.state === 'open_local' || r.state === 'widened')).length
+}
+
 function intent(
   to: TraderId,
   template: TemplateId,
@@ -287,7 +292,8 @@ function decideOffer(
       priceDisplay: fmt(cmd.priceKobo),
       area: cmd.pickupArea,
       cutoff: fmtTime(req.cutoffAt),
-      ref: nextRef,
+      // Claude fix (22 Nov): with two open requests a bare "1" is ambiguous, so the offer names its request.
+      ref: buyerOpenCount(state, req.requesterId) > 1 ? `${nextRef} ${cmd.requestCode}` : nextRef,
       record: recordLabel(state, cmd.by),
       ...(band !== null ? { bandLine: formatBandLine(band) } : {}),
     }, `offer_received:${cmd.requestCode}:${offerId}:rev1`),

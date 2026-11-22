@@ -44,10 +44,10 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: your request for ${v.qty} ${v.unit} ${v.name} is open till ${v.cutoff}. Reply CANCEL to close.`,
 
   seller_invited: v =>
-    `${v.code}: spare ${v.qty} crate ${v.name} needed by ${v.cutoff}. Reply ${v.code} price area.`,
+    `${v.code}: spare ${v.qty} crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price, then pickup place, e.g. ${v.code} 4200 Cedar Lane.`,
 
   offer_received: v => {
-    const full = `${v.code}: ${v.sellerAlias} offers ${v.qty} ${v.unit}, ${v.priceDisplay} credits, ${v.area}, hold till ${v.cutoff}. Reply ${v.ref} to hold.`
+    const full = `${v.code}: ${v.sellerAlias} offers 1 ${v.unit} for ${v.priceDisplay} credits, ${v.area}, hold till ${v.cutoff}. Reply ${v.ref} to hold.`
     const quote = gsmSeptetCount(full.replace(/crate30/g, 'crate')) <= 160 ? full
       : `${v.code}: ${v.sellerAlias}, ${v.priceDisplay} credits, ${v.area}, till ${v.cutoff}. Hold: ${v.ref}.`
     const withRecord = v.record ? `${quote} ${v.sellerAlias}: ${v.record}.` : quote
@@ -61,7 +61,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
 
   offer_accepted_seller: v =>
     v.askCode
-      ? `${v.code}: ${v.buyerAlias} holds your crate till ${v.cutoff}. Buyer record: ${v.record}. At pickup, ask for their code and reply GIVEN code ${v.code}.`
+      ? `${v.code}: ${v.buyerAlias} holds your crate till ${v.cutoff}. Buyer record: ${v.record}. At pickup, ask for their 3-digit code and reply GIVEN, the code, then ${v.code}.`
       :
     `${v.code}: your crate is held for the buyer till ${v.cutoff}. Reply when ready.`,
 
@@ -84,10 +84,10 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: collection confirmed. Thank you.`,
 
   request_widened_coordinator: v =>
-    `${v.code}: crate ${v.name}, ${v.area}, needed by ${v.cutoff}. Reply ROUTE ${v.code} <circle> to dispatch.`,
+    `${v.code}: buyer asks for 1 crate ${v.name}, ${v.area}, needed by ${v.cutoff}. Route it to a neighbouring circle from the desk.`,
 
   request_routed_seller: v =>
-    `${v.code}: spare crate ${v.name} needed by ${v.cutoff}. Reply ${v.code} price area.`,
+    `${v.code}: spare 1 crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price, then pickup place, e.g. ${v.code} 4200 Cedar Lane.`,
 
   request_cancelled_buyer: v =>
     `${v.code}: cancelled.`,
@@ -102,7 +102,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: your hold expired. Reply WIDEN to ask the coordinator, or CANCEL.`,
 
   hold_expired_seller: v =>
-    `${v.code}: the buyer's hold expired. Your crate is free again.`,
+    `${v.code}: the hold ended at the deadline with no pickup. Your crate is free again.`,
 
   fallback_buyer: v =>
     `${v.code}: no offer secured. Call your usual contacts. Time left: ${v.timeLeft}. Reply WIDEN or CANCEL.`,

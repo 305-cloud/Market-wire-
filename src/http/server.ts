@@ -165,6 +165,38 @@ function replyTo(outbound: OutboundIntent[], providerMessageId: string): Outboun
   return outbound.map(o => ({ ...o, dedupeKey: `${o.dedupeKey}#${providerMessageId}` }))
 }
 
+// ---------------------------------------------------------------------------
+// Claude fix (22 Nov): role-specific help and plain fallback replies, so no text goes unanswered.
+// ---------------------------------------------------------------------------
+const BUYER_HELP = 'To ask: NEED 1 CRATE EGGS BEFORE 5PM. Reply an offer number to hold, DONE when collected, WIDEN to ask the coordinator, CANCEL to stop.'
+const SELLER_HELP = 'To offer: E7 4200 Cedar Lane (request code, your price, pickup place). At pickup: GIVEN and the buyer\'s code, e.g. GIVEN 123 E7. PAUSE stops invites.'
+
+function isSellerNow(state: MarketState, traderId: TraderId): boolean {
+  const ownOpen = [...state.requests.values()].some(r => r.requesterId === traderId &&
+    (r.state === 'open_local' || r.state === 'widened' || r.state === 'held'))
+  const invited = [...state.requests.values()].some(r => r.requesterId !== traderId &&
+    r.invitedSellerIds.includes(traderId) && (r.state === 'open_local' || r.state === 'widened' || r.state === 'held'))
+  return invited && !ownOpen
+}
+
+function roleHelp(state: MarketState, traderId: TraderId): string {
+  return isSellerNow(state, traderId) ? SELLER_HELP : BUYER_HELP
+}
+
+function fallbackReply(state: MarketState, traderId: TraderId, why: string): string {
+  if (why.startsWith('no wideneable')) return 'You have no open request to widen. To ask for stock: NEED 1 CRATE EGGS BEFORE 5PM.'
+  if (why.startsWith('no cancellable')) return 'You have no open request to cancel. Offers you made end when the buyer holds another or the request closes.'
+  if (why.startsWith('cutoff time missing')) return 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.'
+  if (why.startsWith('cutoff time already')) return 'That time has passed or was not clear. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
+  if (why === 'unknown_request') return 'That request code was not found. Check the code at the start of the text you got.'
+  if (why === 'closed') return renderTemplate('request_closed', {})
+  if (why === 'not_member') return 'That request was not sent to you, so you cannot offer or confirm on it.'
+  if (why === 'not_requester') return 'Only the buyer who asked can do that.'
+  if (why === 'taken') return 'That crate is already held by someone else.'
+  if (why === 'stopped') return 'Invitations are paused for you. Reply START to resume.'
+  return roleHelp(state, traderId)
+}
+
 /** Persist market state after successful mutations. */
 async function persistMarket(market: Market): Promise<void> {
   if (isPersistenceEnabled()) {
@@ -484,7 +516,20 @@ export async function createServer() {
 
       const state = buildState(market)
       const now   = market.baseTime
-      const upper = text.trim().toUpperCase()
+      // Claude fix (22 Nov): traders write "Done.", "done o", "pause"; normalise before matching commands.
+      let upper = text.trim().toUpperCase().replace(/[.!?]+$/, '').trim()
+      if (upper === 'DONE O') upper = 'DONE'
+      const replyMark = market.messages.length
+      // Claude fix (22 Nov): every inbound text gets a reply. If a path rejects without telling the
+      // sender anything, send one plain, role-specific reply before answering the HTTP call.
+      const guard = async (code: number, body: Record<string, unknown>) => {
+        const answered = market.messages.slice(replyMark).some(m => m.recipient === actor && !m.sent)
+        if (!answered) {
+          deliverInbox(market, traderId, fallbackReply(state, traderId, String(body.error ?? body.reason ?? '')))
+          await persistMarket(market)
+        }
+        return res.code(code).send(body)
+      }
 
       // ----------------------------------------------------------------
       // HELP  — synthesise a help reply to the sender's inbox
@@ -497,6 +542,11 @@ export async function createServer() {
           r => r.requesterId === traderId && (r.state === 'open_local' || r.state === 'widened'),
         )
         const req0 = heldReq ?? openReq
+        if (!req0) {
+          deliverInbox(market, traderId, roleHelp(state, traderId))
+          await persistMarket(market)
+          return res.send({ status: 'ok' })
+        }
         const code = req0?.code ?? 'E?'
         const options = req0?.state === 'held' ? 'DONE to collect, CANCEL to cancel'
                       : req0?.state === 'open_local' ? 'WIDEN to escalate, CANCEL to cancel'
@@ -529,12 +579,12 @@ export async function createServer() {
             const example = `WIDEN ${widenCandidates[0]!.code}`
             deliverInbox(market, traderId, renderTemplate('which_one', { refs: opts, example }))
             await persistMarket(market)
-            return res.code(400).send({ error: 'ambiguous: ' + opts })
+            return guard(400, { error: 'ambiguous: ' + opts })
           }
           requestCode = widenCandidates[0]?.code ?? null
         }
 
-        if (!requestCode) return res.code(400).send({ error: 'no wideneable request' })
+        if (!requestCode) return guard(400, { error: 'no wideneable request' })
 
         const cmd = { kind: 'widen' as const, by: traderId, requestCode }
         const d   = decide(state, cmd, now)
@@ -543,11 +593,14 @@ export async function createServer() {
           const state2 = buildState(market)
           flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
-          return res.code(400).send({ status: 'rejected', reason: d.reason })
+          return guard(400, { status: 'rejected', reason: d.reason })
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
         flushOutbound(market, d.outbound, state2)
+        if (!d.outbound.some(o => o.to === traderId)) {
+          deliverInbox(market, traderId, `${requestCode}: sent to the coordinator, who can ask a nearby circle. Offers still come to you. Reply CANCEL ${requestCode} to stop.`)
+        }
         await persistMarket(market)
         return res.send({ status: 'ok' })
       }
@@ -573,7 +626,7 @@ export async function createServer() {
             const example = `DONE ${doneCandidates[0]!.code}`
             deliverInbox(market, traderId, renderTemplate('which_one', { refs: opts, example }))
             await persistMarket(market)
-            return res.code(400).send({ error: 'ambiguous: ' + opts })
+            return guard(400, { error: 'ambiguous: ' + opts })
           }
           requestCode = doneCandidates[0]?.code ?? null
           // Claude fix (22 Nov): if the seller already confirmed, a bare DONE repeats the receipt (I3).
@@ -587,7 +640,7 @@ export async function createServer() {
         if (!requestCode) {
           deliverInbox(market, traderId, 'You have no pickup to confirm. Hold an offer first by replying its number.')
           await persistMarket(market)
-          return res.code(400).send({ error: 'no held request' })
+          return guard(400, { error: 'no held request' })
         }
 
         const cmd = { kind: 'collect' as const, by: traderId, requestCode }
@@ -597,7 +650,7 @@ export async function createServer() {
           const state2 = buildState(market)
           flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
-          return res.code(400).send({ status: 'rejected', reason: d.reason })
+          return guard(400, { status: 'rejected', reason: d.reason })
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
@@ -628,12 +681,12 @@ export async function createServer() {
             const example = `CANCEL ${cancelCandidates[0]!.code}`
             deliverInbox(market, traderId, renderTemplate('which_one', { refs: opts, example }))
             await persistMarket(market)
-            return res.code(400).send({ error: 'ambiguous: ' + opts })
+            return guard(400, { error: 'ambiguous: ' + opts })
           }
           requestCode = cancelCandidates[0]?.code ?? null
         }
 
-        if (!requestCode) return res.code(400).send({ error: 'no cancellable request' })
+        if (!requestCode) return guard(400, { error: 'no cancellable request' })
 
         const cmd  = { kind: 'cancel' as const, by: traderId, requestCode }
         const d    = decide(state, cmd, now)
@@ -642,7 +695,7 @@ export async function createServer() {
           const state2 = buildState(market)
           flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
-          return res.code(400).send({ status: 'rejected', reason: d.reason })
+          return guard(400, { status: 'rejected', reason: d.reason })
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
@@ -654,8 +707,8 @@ export async function createServer() {
       // ----------------------------------------------------------------
       // Try the standard interpreter first (handles: STOP, 1, 1 E7)
       // ----------------------------------------------------------------
-      let cmd = interpret(text.trim(), state, traderId)
-      if (upper === 'START') cmd = { kind: 'start', by: traderId }
+      let cmd = interpret(upper === 'PAUSE' ? 'STOP' : text.trim(), state, traderId)
+      if (upper === 'START' || upper === 'RESUME') cmd = { kind: 'start', by: traderId }
       const given = parseGiven(text)
       if (given) {
         const holds = [...state.holds.values()].filter(hold =>
@@ -668,7 +721,7 @@ export async function createServer() {
             ? 'Add the request code to your reply, for example GIVEN 482 E7.'
             : 'You have no pickup to confirm.')
           await persistMarket(market)
-          return res.code(400).send({ error: 'choose a pickup' })
+          return guard(400, { error: 'choose a pickup' })
         }
         cmd = { kind: 'collect', by: traderId, requestCode: given.requestCode ?? candidates[0].requestCode,
           pickupCode: given.pickupCode }
@@ -683,7 +736,7 @@ export async function createServer() {
           if (gsmSeptetCount(sellerCmd.pickupArea) > 64) {
             deliverInbox(market, traderId, 'Use a shorter pickup area, up to 64 characters, then send the quote again.')
             await persistMarket(market)
-            return res.code(400).send({ error: 'pickup area is too long' })
+            return guard(400, { error: 'pickup area is too long' })
           }
           cmd = sellerCmd
         }
@@ -699,7 +752,7 @@ export async function createServer() {
           // Match anchored BEFORE or BY with time, e.g., "BEFORE 6" or "BY 6:30PM"
           const timeMatch = text.match(/\b(BEFORE|BY)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i)
           if (!timeMatch) {
-            return res.code(400).send({ error: 'cutoff time missing (use BEFORE <time> or BY <time>)' })
+            return guard(400, { error: 'cutoff time missing (use BEFORE <time> or BY <time>)' })
           }
 
           const hourStr = timeMatch[2]
@@ -723,9 +776,14 @@ export async function createServer() {
 
           // Reject if cutoff already elapsed
           if (!Number.isFinite(cutoff.getTime()) || cutoff <= now) {
-            return res.code(400).send({ error: 'cutoff time already elapsed' })
+            return guard(400, { error: 'cutoff time already elapsed' })
           }
 
+          if (createCmd.quantity !== 1) {
+            deliverInbox(market, traderId, 'Market Wire finds one crate per request for now. Send NEED 1 CRATE EGGS BEFORE 5PM once for each crate you need.')
+            await persistMarket(market)
+            return guard(400, { error: 'one crate per request' })
+          }
           cmd = { ...createCmd, cutoffAt: cutoff }
         }
       }
@@ -742,16 +800,15 @@ export async function createServer() {
             const code = heldByMe[0]!.code
             deliverInbox(market, traderId, `${code}: you already hold this crate. Reply DONE ${code} when you collect.`)
             await persistMarket(market)
-            return res.code(400).send({ status: 'rejected', reason: 'already_held' })
+            return guard(400, { status: 'rejected', reason: 'already_held' })
           }
         }
-        const helpBody = renderTemplate('help', {
-          code: 'E?',
-          options: 'NEED qty item BEFORE time, WIDEN, DONE, CANCEL or reply number to hold',
-        })
-        deliverInbox(market, traderId, helpBody)
+        const quoteLike = /^(E\d+)\b/i.exec(text.trim())
+        deliverInbox(market, traderId, quoteLike
+          ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 crate, then the pickup place).`
+          : roleHelp(state, traderId))
         await persistMarket(market)
-        return res.code(400).send({ error: 'unparseable command' })
+        return guard(400, { error: 'unparseable command' })
       }
 
       if (cmd.kind === 'accept') cmd = { ...cmd, pickupCode: String(randomInt(100, 1000)) }
@@ -763,11 +820,16 @@ export async function createServer() {
         const state2 = buildState(market)
         flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
         await persistMarket(market)
-        return res.code(400).send({ status: 'rejected', reason: d.reason })
+        return guard(400, { status: 'rejected', reason: d.reason })
       }
       for (const ev of d.events) market.events.push(ev)
       const state2 = buildState(market)
       flushOutbound(market, d.outbound, state2)
+      // Claude fix (22 Nov): tell the seller their offer went out.
+      if (cmd.kind === 'offer') {
+        const credits = (cmd.priceKobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
+        deliverInbox(market, traderId, `${cmd.requestCode}: your offer of ${credits} credits at ${cmd.pickupArea} went to the buyer. To change it, send a new price.`)
+      }
       await persistMarket(market)
 
       return res.send({ status: 'ok' })

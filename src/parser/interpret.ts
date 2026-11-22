@@ -24,6 +24,9 @@ import { resolveTarget } from '../app/resolve-target.js'
  *   8–9   at/after 12:00 UTC → hour + 12  – 08:xx/09:xx is past; must be evening
  */
 export function disambiguateHour(hour: number, nowAt: Date): number {
+  // Claude fix (22 Nov): 24-hour times ("before 18:00", "by 16") are already unambiguous.
+  if (hour === 0 || (hour >= 13 && hour <= 23)) return hour
+  if (hour > 23) return Number.NaN
   if (hour >= 1 && hour <= 7) return hour + 12
   if (hour >= 10 && hour <= 12) return hour
   // hour is 8 or 9
@@ -209,10 +212,13 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
   const requestCode = parts[0].toUpperCase()
   if (!/^E\d+$/.test(requestCode)) return null
 
-  const pricePart = parts[1]
+  // Claude fix (22 Nov): accept how traders write prices: 4,300 / N4200 / ₦4200.
+  const pricePart = parts[1].replace(/^(?:N|₦)/i, '').replace(/,(?=\d{3}(?:,|$))/g, '')
   const priceMatch = pricePart.match(/^(\d+)$/)
   if (!priceMatch) return null
   const priceInput = parseInt(priceMatch[1], 10)
+  // "E10 2 4200 Cedar Lane": a quantity before the price would make the price 2. Ask instead.
+  if (/^\d[\d,]*$/.test(parts[2])) return null
 
   // Validate price as whole credits (1..1,000,000). Reject zero/negative/absurd values.
   if (!Number.isSafeInteger(priceInput) || priceInput < 1 || priceInput > 1000000) return null
@@ -247,7 +253,7 @@ export function parseCreateRequest(message: string, senderId: string, nowAt?: Da
   const trimmed = message.trim().toLowerCase()
 
   // Try to extract quantity
-  const qtyMatch = trimmed.match(/\b(\d+)\s+(crate|crates)\b/i)
+  const qtyMatch = trimmed.match(/\b(\d+)\s+(crate|crates|tray|trays)\b/i)
   if (!qtyMatch) return null
   const quantity = parseInt(qtyMatch[1], 10)
 

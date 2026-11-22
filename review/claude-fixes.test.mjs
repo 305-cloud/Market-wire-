@@ -99,3 +99,77 @@ test('MINOR: a repeated "1 E7" after holding says "you already hold"', async () 
   assert.equal(r.body.reason, 'already_held')
   assert.match((await m.inbox('mara')).at(-1).text, /already hold this crate/)
 })
+
+// ---- Fixes from the first-use (consumer) review, 22 Nov ----
+
+test('UX: 24-hour times work ("before 18:00")', async () => {
+  const m = await market()
+  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 18:00')).code, 200)
+  const e8 = (await m.state()).requests.find(r => r.code === 'E8')
+  assert.equal(e8.cutoffAt, '2026-11-20T18:00:00.000Z')
+})
+
+test('UX: one crate per request, said plainly', async () => {
+  const m = await market()
+  assert.equal((await m.send('jules', 'NEED 3 CRATES EGGS BEFORE 5PM')).code, 400)
+  assert.match((await m.inbox('jules')).at(-1).text, /one crate per request/)
+  assert.equal((await m.send('jules', 'need 1 tray eggs before 5pm')).code, 200, 'tray means crate')
+})
+
+test('UX: offers say 1 crate and the price; seller is told the offer went out', async () => {
+  const m = await market()
+  assert.equal((await m.send('ellis', 'E7 4,300 Cedar Lane')).code, 200)
+  assert.match((await m.inbox('mara')).at(-1).text, /Ellis offers 1 crate for 4,300 credits/)
+  assert.match((await m.inbox('ellis')).at(-1).text, /your offer of 4,300 credits at Cedar Lane went to the buyer/)
+  assert.equal((await m.send('jules', 'E7 N4100 Oak Row')).code, 200)
+  assert.match((await m.inbox('mara')).at(-1).text, /4,100 credits/)
+})
+
+test('UX: a number before the price is not read as the price', async () => {
+  const m = await market()
+  assert.equal((await m.send('ellis', 'E7 2 4200 Cedar Lane')).code, 400)
+  assert.match((await m.inbox('ellis')).at(-1).text, /To offer on E7: E7 4200 Cedar Lane/)
+  assert.equal((await m.state()).offers.length, 0)
+})
+
+test('UX: with two open requests, offers name the request in the reply', async () => {
+  const m = await market()
+  await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')
+  await m.send('ellis', 'E8 4200 Cedar Lane')
+  assert.match((await m.inbox('mara')).at(-1).text, /Reply 1 E8 to hold/)
+})
+
+test('UX: "done o" collects; PAUSE pauses invitations', async () => {
+  const { m } = await held()
+  assert.equal((await m.send('mara', 'done o')).code, 200)
+  assert.equal(await m.e7(), 'collected')
+  assert.equal((await m.send('rowan', 'pause')).code, 200)
+})
+
+test('UX: sellers get seller help; buyers get buyer help', async () => {
+  const m = await market()
+  await m.send('ellis', 'help')
+  assert.match((await m.inbox('ellis')).at(-1).text, /^To offer:/)
+  await m.send('rowan', 'help')
+  assert.match((await m.inbox('rowan')).at(-1).text, /^To ask: NEED/)
+})
+
+test('UX: widening is confirmed to the buyer', async () => {
+  const m = await market()
+  assert.equal((await m.send('mara', 'WIDEN')).code, 200)
+  assert.match((await m.inbox('mara')).at(-1).text, /sent to the coordinator/)
+})
+
+test('UX: every inbound text gets at least one reply to the sender', async () => {
+  const m = await market()
+  const texts = [['mara', 'widen e99'], ['ellis', 'cancel'], ['jules', 'E99 4000 Oak Row'], ['rowan', 'widen'],
+    ['mara', 'need 1 crate eggs'], ['mara', 'need 1 crate eggs before 1am'], ['ellis', 'GIVEN 123'], ['mara', '7'],
+    ['jules', 'hello'], ['mara', 'DONE E42'], ['ellis', 'E7 0 Cedar Lane'], ['ellis', 'E7 4200']]
+  for (const [who, text] of texts) {
+    const before = (await m.inbox(who)).length
+    await m.send(who, text)
+    const after = await m.inbox(who)
+    assert.ok(after.length >= before + 2, `"${text}" from ${who} got no reply`)
+    for (const msg of after.slice(before + 1)) assert.ok(msg.text.length <= 160, msg.text)
+  }
+})

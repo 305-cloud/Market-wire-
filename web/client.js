@@ -280,7 +280,10 @@
     if (!button?.dataset.text) return;
     const input = byId(button.dataset.target);
     input.value = button.dataset.text;
-    input.focus();
+    // Claude fix (22 Nov): a shortcut sends its text in one click; it used to only fill the box.
+    const sendButton = byId(button.dataset.target.replace(/Input$/, 'SendBtn'));
+    if (sendButton) sendButton.click();
+    else input.focus();
   });
   const resetDialog = byId('resetDialog');
   byId('resetBtn').addEventListener('click', () => {
