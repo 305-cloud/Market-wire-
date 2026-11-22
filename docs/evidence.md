@@ -49,3 +49,16 @@ Kiro wrote the market core, the bugfix revision `f3d95bc`, and the first price-b
 - The three panes represent the separate buyer and seller phones and the coordinator desk. Quote labels carry decision information. The reset dialog protects visitor progress. Existing dispatch typography, paint and spacing keep attention on the texts and route action.
 
 This is a local review build with simulated trades and messages. The room does not render private texts. The simulator operator can deliberately inspect the full synthetic log and switch roles. Public deployment, real provider replay and field testing are outside this verification.
+
+## Review fixes, 22 November
+
+Kiro was still at its monthly limit. On the owner's instruction, Claude reviewed revision `a552eb3`, then fixed what it found. Kiro did not write these changes. Each change has a regression test in `review/claude-fixes.test.mjs`.
+
+1. **Pickup code was sent to the seller.** A seller could text `GIVEN <code>` without the buyer ever turning up. That closed the buyer's hold and added to both traders' counts. The code now goes only to the buyer, and the seller is asked to get it at handover. The original design note asked for both parties to get the code; the note is revised in `.kiro/specs/pickup-code`.
+2. **There was no cap on wrong codes.** The code was guessed on try 662 of 900. After five wrong codes on a live hold, `GIVEN` is refused, including the right code. The buyer's `DONE` still works. Each wrong code is a `pickup_code_rejected` event, so the lock survives replay.
+3. **The shortage alert repeated at a two-hour clock-bucket edge** (one alert at 15:50 and another at 16:05). It is now limited to one alert per circle and item within 120 minutes of the previous alert.
+4. **A bare `DONE` after the seller confirmed got no reply.** It now repeats the receipt (I3). A `DONE` with nothing held gets a plain reply.
+5. **A second wrong message in the same simulated minute was silently suppressed.** Reply dedupe keys used the frozen simulator clock. Rejection replies are now keyed to the inbound message id.
+6. **Minor:** a repeated `1 E7` after holding now says "you already hold this crate". A leftover real place name was removed from a code comment.
+
+Checks after the fixes: `tsc` 0 errors. Vitest 95/95. Node suites 33/33 (`claude-fixes`, `transport-regressions`, `core-regressions`, `check-report`). Claude's original repros 8/8. PostgreSQL and browser checks were not re-run in this pass.

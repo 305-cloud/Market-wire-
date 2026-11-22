@@ -14,14 +14,14 @@ node dist/src/index.js
 
 Open http://127.0.0.1:3000. The prototype uses fictional traders and pickup places, generic credits, and a simulated market clock. Run the local pickup first, then create a second shortage, widen it from the buyer phone and route it from the coordinator room.
 
-Start by sending Ellis’s quote. Mara sees a private range based on simulated completed trades. After she holds a quote, either Mara can reply `DONE E7` or the chosen seller can text `GIVEN <code> E7`. The simulator records one pickup either way. The coordinator sees only aggregate counts in shortage alerts, independently of the buyer’s decision to share a specific request. The alert is inspired by Cybersyn's Cyberstride early-warning software.
+Start by sending Ellis’s quote. Mara sees a private range based on simulated completed trades. After she holds a quote, only Mara's phone shows the pickup code. At handover she reads it to the seller, who texts `GIVEN <code> E7`; or Mara replies `DONE E7`. Five wrong codes lock `GIVEN` for that pickup. The simulator records one pickup either way. The coordinator sees only aggregate counts in shortage alerts, independently of the buyer’s decision to share a specific request. The alert is inspired by Cybersyn's Cyberstride early-warning software.
 
 ## Verify the implementation
 
 ```sh
 npm test
 npm run build
-node --test review/transport-regressions.test.mjs review/core-regressions.test.mjs review/check-report.test.mjs
+node --test review/transport-regressions.test.mjs review/core-regressions.test.mjs review/check-report.test.mjs review/claude-fixes.test.mjs
 ```
 
 Without a `DATABASE_URL`, the simulator uses in-memory sessions. To verify persistence, point `DATABASE_URL` at a dedicated disposable PostgreSQL database, run `npm run migrate`, then run `node --test review/postgres-race.test.mjs` and `node review/restart-smoke.mjs`. The local HTTP simulator persists session snapshots, while the event repository concurrency test uses its own transaction path.
@@ -43,3 +43,8 @@ The checker validates the shape and recorded outcomes of a run. Use the underlyi
 | Quote and transport review fixes | Kiro CLI | [Quote integrity](.kiro/specs/bugfix-quote-integrity), [transport](.kiro/specs/bugfix-demo-transport), revision `f3d95bc` |
 | Private price range | Kiro CLI, then Codex after Kiro reached its monthly limit | [Price band](.kiro/specs/price-band) |
 | Shortage alerts, pickup codes and browser usability | Codex | [Shortage alerts](.kiro/specs/shortage-alert), [pickup codes](.kiro/specs/pickup-code), [build evidence](docs/evidence.md) |
+| Review fixes after the follow-up build (pickup-code privacy and lockout, alert dedupe, silent replies) | Claude | [Build evidence](docs/evidence.md#review-fixes-22-november), `review/claude-fixes.test.mjs` |
+
+## Deploying
+
+`Dockerfile` builds the in-memory simulator and listens on `0.0.0.0:$PORT`. Set `DATABASE_URL` to a managed PostgreSQL 16 database for durable sessions. A public deployment needs the owner's approval and should stay up until judging ends on 29 January 2027.
