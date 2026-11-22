@@ -274,9 +274,14 @@ test('STRESS: requests the buyer cancelled do not count towards a shortage alert
 const { rulesReport } = await import('../dist/src/http/rules-audit.js')
 const { emptyMarketState } = await import('../dist/src/domain/types.js')
 
-test('READER: messy texts that are clear run as the command', async () => {
+test('READER: closing a deal always asks first, naming the request; clear requests run', async () => {
   const { m } = await held()
-  assert.equal((await m.send('mara', 'i don collect')).code, 200)
+  assert.equal((await m.send('mara', 'i don collect')).body.suggestion, 'DONE E7')
+  assert.equal(await m.e7(), 'held')
+  for (const t of ['egg don finish', 'hold 1', 'i don reach']) assert.notEqual((await m.send('mara', t)).code, 200, t)
+  assert.equal(await m.e7(), 'held')
+  assert.equal((await m.send('mara', 'i don collect')).body.suggestion, 'DONE E7')
+  assert.equal((await m.send('mara', 'yes')).code, 200)
   assert.equal(await m.e7(), 'collected')
   assert.equal((await m.send('mara', 'abeg i need 1 crate egg b4 6')).code, 200)
   assert.equal((await m.state()).requests.at(-1).item, 'eggs')

@@ -571,6 +571,12 @@ export async function createServer() {
         if (saidYes && suggestion) text = suggestion
         else if (!looksCanonical(text)) {
           const reading = readTrader(text)
+          if (reading && !reading.sure && /^(DONE|CANCEL|WIDEN)$/.test(reading.text)) {
+            // Name the request in the suggestion when the trader has exactly one open request.
+            const mine = [...buildState(market).requests.values()].filter(r => r.requesterId === traderId &&
+              (r.state === 'open_local' || r.state === 'widened' || r.state === 'held'))
+            if (mine.length === 1) reading.text += ' ' + mine[0]!.code
+          }
           if (reading?.sure) text = reading.text
           else if (reading) {
             if (!pendingSuggestions.has(market)) pendingSuggestions.set(market, new Map())

@@ -17,16 +17,18 @@ export interface Reading {
 }
 
 const PHRASES = new Map<string, Entry>()
+// Everyday words that misfire as commands (consumer review, 22 Nov): 'egg don finish', 'hold 1', 'i don reach'.
+const SKIP = new Set(['don', 'hold', 'got', 'good', 'on', 'off', 'other', 'else', 'mind', 'far', 'further', 'finish', 'reached', 'reach me', 'e don reach', 'e don reach me', 'drop', 'void', 'join', 'return', 'continue', 'sub', 'how'])
 let longest = 1
 for (const [variant, canonical, kind, sure] of LEXICON) {
   const key = variant.trim().toLowerCase().replace(/\s+/g, ' ')
-  if (!key || PHRASES.has(key)) continue
+  if (!key || PHRASES.has(key) || SKIP.has(key)) continue
   PHRASES.set(key, { canonical, kind, sure })
   longest = Math.max(longest, key.split(' ').length)
 }
 // Typo fallback only matches the words that matter (commands, items, units), never fillers.
 const TYPO_TARGETS = [...PHRASES.entries()].filter(([variant, entry]) =>
-  !variant.includes(' ') && variant.length >= 4 && entry.sure && ['command', 'item', 'unit'].includes(entry.kind))
+  !variant.includes(' ') && variant.length >= 5 && entry.sure && ['command', 'item', 'unit'].includes(entry.kind))
 
 /** Damerau-Levenshtein distance, capped: returns cap + 1 as soon as the distance exceeds cap. */
 export function editDistance(a: string, b: string, cap = 2): number {
@@ -74,7 +76,7 @@ export function tokenize(text: string): Token[] {
     else if (/^\d+$/.test(w)) tokens.push({ raw: w, canonical: w, kind: 'digit', sure: true })
     else {
       const cap = w.length >= 7 ? 2 : 1
-      const best = w.length >= 4
+      const best = w.length >= 5
         ? TYPO_TARGETS.map(([variant, entry]) => ({ entry, d: editDistance(w, variant, cap) })).filter(x => x.d <= cap).sort((a, b) => a.d - b.d)[0]
         : undefined
       tokens.push(best
@@ -100,7 +102,8 @@ export function readTrader(text: string): Reading | null {
   if (commands.includes('GIVEN')) {
     const pin = tokens.find(t => t.kind === 'digit' && /^\d{3}$/.test(t.canonical))?.canonical
     if (!pin) return null
-    return { text: `GIVEN ${pin}${code ? ' ' + code : ''}`, sure: sure && unknown === 0 }
+    // Never close a deal from a reading: GIVEN always asks for a YES first.
+    return { text: `GIVEN ${pin}${code ? ' ' + code : ''}`, sure: false }
   }
 
   const items = tokens.filter(t => t.kind === 'item').map(t => t.canonical)
@@ -137,7 +140,8 @@ export function readTrader(text: string): Reading | null {
   const simple = commands.find(c => SIMPLE.has(c))
   if (simple) {
     if (unknown > 1) return null
-    return { text: simple + (code ? ' ' + code : ''), sure: sure && unknown === 0 }
+    // Commands that change or close a deal always ask for a YES first; only HELP runs straight away.
+    return { text: simple + (code ? ' ' + code : ''), sure: simple === 'HELP' && sure && unknown === 0 }
   }
   return null
 }
@@ -147,7 +151,7 @@ export function looksCanonical(text: string): boolean {
   const t = text.trim()
   return /^E\d+\b/i.test(t) ||
     /^\d+\.?(\s+E\d+)?(\s+V\d+)?[.!?]?$/i.test(t) ||
-    /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)(\s+E\d+)?[.!?]?$/i.test(t) ||
+    /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)(\s+E\d+)?(\s+(o+|pls|please|thanks|thank you|now|abeg))*(\s+E\d+)?[.!?]*$/i.test(t) ||
     /^GIVEN\s+\d{3}(\s+E\d+)?[.!?]?$/i.test(t) ||
     /^(YES|NO)[.!?]?$/i.test(t) ||
     /^NEED\s+\d+\s+(CRATES?|TRAYS?)\s+(EGGS|MILK)\s+(BEFORE|BY)\s+\d{1,2}(:\d{2})?\s*(AM|PM)?[.!?]?$/i.test(t)
