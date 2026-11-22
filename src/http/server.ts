@@ -161,8 +161,8 @@ function flushOutbound(
  * deduplicated by providerMessageId. Key its outbound on that id so a second wrong message in the
  * same simulated minute still gets its own reply instead of being suppressed.
  */
-function replyTo(outbound: OutboundIntent[], providerMessageId: string): OutboundIntent[] {
-  return outbound.map(o => ({ ...o, dedupeKey: `${o.dedupeKey}#${providerMessageId}` }))
+function replyTo(outbound: OutboundIntent[], providerMessageId: string, onlyTo?: TraderId): OutboundIntent[] {
+  return outbound.map(o => onlyTo && o.to !== onlyTo ? o : ({ ...o, dedupeKey: `${o.dedupeKey}#${providerMessageId}` }))
 }
 
 // ---------------------------------------------------------------------------
@@ -179,11 +179,15 @@ function isSellerNow(state: MarketState, traderId: TraderId): boolean {
   return invited && !ownOpen
 }
 
+const COORD_HELP = 'Coordinator desk: widened requests and shortage alerts arrive here. Route a widened request from the desk. The desk does not buy or sell.'
+
 function roleHelp(state: MarketState, traderId: TraderId): string {
+  if (state.traders.get(traderId)?.role === 'coordinator') return COORD_HELP
   return isSellerNow(state, traderId) ? SELLER_HELP : BUYER_HELP
 }
 
 function fallbackReply(state: MarketState, traderId: TraderId, why: string): string {
+  if (state.traders.get(traderId)?.role === 'coordinator') return COORD_HELP
   if (why.startsWith('no wideneable')) return 'You have no open request to widen. To ask for stock: NEED 1 CRATE EGGS BEFORE 5PM.'
   if (why.startsWith('no cancellable')) return 'You have no open request to cancel. Offers you made end when the buyer holds another or the request closes.'
   if (why.startsWith('cutoff time missing')) return 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.'
@@ -194,6 +198,8 @@ function fallbackReply(state: MarketState, traderId: TraderId, why: string): str
   if (why === 'not_requester') return 'Only the buyer who asked can do that.'
   if (why === 'taken') return 'That crate is already held by someone else.'
   if (why === 'stopped') return 'Invitations are paused for you. Reply START to resume.'
+  if (why === 'too_many_open') return 'You already have 3 open requests. CANCEL one before asking again.'
+  if (why === 'past_cutoff') return 'That time has passed. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
   return roleHelp(state, traderId)
 }
 
@@ -491,13 +497,28 @@ export async function createServer() {
       // Bug 8: validate body shape with zod before touching anything else
       const parsed = inboundBodySchema.safeParse(req.body)
       if (!parsed.success) {
+        // Claude fix (22 Nov): an empty or huge text from a known trader still gets a plain reply.
+        const raw = (req.body ?? {}) as { alias?: unknown; text?: unknown }
+        const rawAlias = typeof raw.alias === 'string' ? raw.alias.toLowerCase() : ''
+        if (typeof raw.text === 'string' && Object.hasOwn(ALIAS_TO_ID, rawAlias)) {
+          deliverInbox(market, ALIAS_TO_ID[rawAlias]!, raw.text.trim()
+            ? 'That text was too long. Keep it short, e.g. NEED 1 CRATE EGGS BEFORE 5PM.'
+            : 'That text was empty. Reply HELP to see what you can send.')
+          await persistMarket(market)
+        }
         return res.code(400).send({ error: 'invalid request body', details: parsed.error.flatten().fieldErrors })
       }
       const { alias, text, providerMessageId } = parsed.data
 
-      // Validate text length (160 GSM-7 chars max)
-      if (gsmSeptetCount(text) > 160) {
-        return res.code(400).send({ error: 'message too long (max 160 GSM-7 chars)' })
+      // Claude fix (22 Nov): phones join long texts, and a local place name may need non-GSM letters,
+      // so inbound is limited by characters (two SMS parts), and an over-long text still gets a reply.
+      if ([...text].length > 320) {
+        const longId = ALIAS_TO_ID[alias.toLowerCase()]
+        if (longId && Object.hasOwn(ALIAS_TO_ID, alias.toLowerCase())) {
+          deliverInbox(market, longId, 'That text was too long. Keep it short, e.g. NEED 1 CRATE EGGS BEFORE 5PM or E7 4200 Cedar Lane.')
+          await persistMarket(market)
+        }
+        return res.code(400).send({ error: 'message too long (max 320 characters)' })
       }
 
       // Bug E: validate alias BEFORE consuming the idempotency key
@@ -519,6 +540,10 @@ export async function createServer() {
       // Claude fix (22 Nov): traders write "Done.", "done o", "pause"; normalise before matching commands.
       let upper = text.trim().toUpperCase().replace(/[.!?]+$/, '').trim()
       if (upper === 'DONE O') upper = 'DONE'
+      {
+        const head = /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)\b\s*(.*)$/.exec(upper)
+        if (head && head[2] && !/^E\d+$/.test(head[2])) upper = head[1]!
+      }
       const replyMark = market.messages.length
       // Claude fix (22 Nov): every inbound text gets a reply. If a path rejects without telling the
       // sender anything, send one plain, role-specific reply before answering the HTTP call.
@@ -597,7 +622,7 @@ export async function createServer() {
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
-        flushOutbound(market, d.outbound, state2)
+        flushOutbound(market, replyTo(d.outbound, providerMessageId, traderId), state2)
         if (!d.outbound.some(o => o.to === traderId)) {
           deliverInbox(market, traderId, `${requestCode}: sent to the coordinator, who can ask a nearby circle. Offers still come to you. Reply CANCEL ${requestCode} to stop.`)
         }
@@ -654,7 +679,7 @@ export async function createServer() {
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
-        flushOutbound(market, d.outbound, state2)
+        flushOutbound(market, replyTo(d.outbound, providerMessageId, traderId), state2)
         await persistMarket(market)
         return res.send({ status: 'ok' })
       }
@@ -699,7 +724,7 @@ export async function createServer() {
         }
         for (const ev of d.events) market.events.push(ev)
         const state2 = buildState(market)
-        flushOutbound(market, d.outbound, state2)
+        flushOutbound(market, replyTo(d.outbound, providerMessageId, traderId), state2)
         await persistMarket(market)
         return res.send({ status: 'ok' })
       }
@@ -707,7 +732,7 @@ export async function createServer() {
       // ----------------------------------------------------------------
       // Try the standard interpreter first (handles: STOP, 1, 1 E7)
       // ----------------------------------------------------------------
-      let cmd = interpret(upper === 'PAUSE' ? 'STOP' : text.trim(), state, traderId)
+      let cmd = interpret(upper === 'PAUSE' || upper === 'STOP' ? 'STOP' : text.trim(), state, traderId)
       if (upper === 'START' || upper === 'RESUME') cmd = { kind: 'start', by: traderId }
       const given = parseGiven(text)
       if (given) {
@@ -774,11 +799,20 @@ export async function createServer() {
           // Build cutoff date in UTC
           const cutoff = new Date(now.toISOString().slice(0, 10) + `T${hour24.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}:00Z`)
 
+          // Claude fix (22 Nov): a time earlier than now but within 12 hours means tomorrow ("before 1am" at 23:30).
+          if (Number.isFinite(cutoff.getTime()) && cutoff <= now && cutoff.getTime() + 86_400_000 - now.getTime() <= 12 * 3_600_000) {
+            cutoff.setUTCDate(cutoff.getUTCDate() + 1)
+          }
           // Reject if cutoff already elapsed
           if (!Number.isFinite(cutoff.getTime()) || cutoff <= now) {
             return guard(400, { error: 'cutoff time already elapsed' })
           }
 
+          if (!/\b(eggs?|milk)\b/i.test(text)) {
+            deliverInbox(market, traderId, 'For now Market Wire handles eggs (and milk). Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.')
+            await persistMarket(market)
+            return guard(400, { error: 'unsupported item' })
+          }
           if (createCmd.quantity !== 1) {
             deliverInbox(market, traderId, 'Market Wire finds one crate per request for now. Send NEED 1 CRATE EGGS BEFORE 5PM once for each crate you need.')
             await persistMarket(market)
@@ -796,6 +830,23 @@ export async function createServer() {
           const wanted = replyMatch[1]?.toUpperCase()
           const heldByMe = [...state.requests.values()].filter(r => r.requesterId === traderId && r.state === 'held' &&
             (!wanted || r.code === wanted))
+          const refNum = /^(\d+)/.exec(text.trim())![1]!
+          const open = [...state.requests.values()].filter(r => r.requesterId === traderId &&
+            (r.state === 'open_local' || r.state === 'widened') && (!wanted || r.code === wanted))
+          if (!wanted && open.length > 1) {
+            const refs = open.map(r => `${refNum} ${r.code}`).join(' or ')
+            deliverInbox(market, traderId, renderTemplate('which_one', { refs, example: `${refNum} ${open[0]!.code}` }))
+            await persistMarket(market)
+            return guard(400, { error: 'ambiguous: ' + refs })
+          }
+          const revised = open.length === 1 ? [...state.offers.values()].find(o => o.requestCode === open[0]!.code &&
+            o.replyRef === refNum && o.state === 'proposed' && o.revision > 1) : undefined
+          if (revised) {
+            const ref = `${refNum} ${revised.requestCode} v${revised.revision}`
+            deliverInbox(market, traderId, renderTemplate('stale_revision', { code: revised.requestCode, ref }))
+            await persistMarket(market)
+            return guard(400, { status: 'rejected', reason: 'stale_revision' })
+          }
           if (heldByMe.length === 1) {
             const code = heldByMe[0]!.code
             deliverInbox(market, traderId, `${code}: you already hold this crate. Reply DONE ${code} when you collect.`)
@@ -804,7 +855,7 @@ export async function createServer() {
           }
         }
         const quoteLike = /^(E\d+)\b/i.exec(text.trim())
-        deliverInbox(market, traderId, quoteLike
+        deliverInbox(market, traderId, quoteLike && state.traders.get(traderId)?.role !== 'coordinator'
           ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 crate, then the pickup place).`
           : roleHelp(state, traderId))
         await persistMarket(market)
@@ -824,7 +875,7 @@ export async function createServer() {
       }
       for (const ev of d.events) market.events.push(ev)
       const state2 = buildState(market)
-      flushOutbound(market, d.outbound, state2)
+      flushOutbound(market, replyTo(d.outbound, providerMessageId, traderId), state2)
       // Claude fix (22 Nov): tell the seller their offer went out.
       if (cmd.kind === 'offer') {
         const credits = (cmd.priceKobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
@@ -893,7 +944,7 @@ export async function createServer() {
       if (!(await requireBearer(req, market))) return res.code(401).send({ error: 'unauthorized' })
 
       const mins = Number(req.body?.minutes ?? 10)
-      if (!Number.isFinite(mins) || mins < 1 || mins > 1440) {
+      if (typeof req.body?.minutes !== 'undefined' && typeof req.body?.minutes !== 'number' || !Number.isInteger(mins) || mins < 1 || mins > 1440) {
         return res.code(400).send({ error: 'minutes must be 1-1440' })
       }
       market.baseTime = new Date(market.baseTime.getTime() + mins * 60_000)

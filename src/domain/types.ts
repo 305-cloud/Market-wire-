@@ -135,6 +135,8 @@ export function emptyMarketState(workspaceId: WorkspaceId): MarketState {
 export type RejectReason =
   | 'wrong_pickup_code'
   | 'pickup_locked'
+  | 'too_many_open'
+  | 'no_sellers'
   | 'closed'
   | 'taken'
   | 'not_member'

@@ -185,7 +185,7 @@ test('the price range and pickup code are scoped to the exchange participants', 
   const code = /Pickup code (\d{3})/.exec(fromBuyer.text)[1]
   // Claude fix (22 Nov): only the buyer holds the code; the seller is told to ask for it at handover.
   assert.ok(held.messages.filter(message => message.recipient !== 'mara').every(message => !message.text.includes(code)))
-  assert.ok(held.messages.some(message => message.recipient === 'ellis' && message.text.includes('ask for their code')))
+  assert.ok(held.messages.some(message => message.recipient === 'ellis' && message.text.includes('ask for their 3-digit code')))
   assert.ok(held.messages.every(message => message.to !== 'room'))
   const wrong = code === '100' ? '101' : '100'
   assert.equal((await m.send('ellis', 'GIVEN ' + wrong + ' E7')).code, 400)
@@ -201,12 +201,13 @@ test('the price range and pickup code are scoped to the exchange participants', 
 
 test('five unmet asks generate exactly one aggregate coordinator alert in the window', async () => {
   const m = await market()
-  for (let i = 0; i < 3; i++) {
-    assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
+  // Claude (22 Nov): one trader may keep at most 3 open requests, so the asks come from two traders.
+  for (const who of ['mara', 'mara', 'jules']) {
+    assert.equal((await m.send(who, 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   }
   await m.clock(1)
   assert.equal((await m.state()).messages.filter(message => message.to === 'room').length, 0)
-  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
+  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   await m.clock(1)
   await m.clock(1)
   const dispatches = (await m.state()).messages.filter(message => message.to === 'room')

@@ -62,3 +62,51 @@ Kiro was still at its monthly limit. On the owner's instruction, Claude reviewed
 6. **Minor:** a repeated `1 E7` after holding now says "you already hold this crate". A leftover real place name was removed from a code comment.
 
 Checks after the fixes: `tsc` 0 errors. Vitest 95/95. Node suites 33/33 (`claude-fixes`, `transport-regressions`, `core-regressions`, `check-report`). Claude's original repros 8/8. PostgreSQL and browser checks were not re-run in this pass.
+
+## Agent review round, 22 November
+
+Claude ran three independent review agents against the fixed build, then fixed what they found. Kiro did not write these changes. Each has a regression test in `review/claude-fixes.test.mjs` (27 tests).
+
+- **Stress test:** 1,840 random command sequences (109,600 steps), plus about 3,400 targeted attack commands. There were no 5xx errors and no violations of I1–I4, I6–I8 or I10. It confirmed 16 bugs, all fixed:
+  - a second word was taken as a request code ("done o", "Done thanks", "CANCEL PLS");
+  - repeated STOP, START and DONE replies were silent;
+  - 24-hour times and "before 1am" late at night failed;
+  - free text, zero, huge and unknown-item requests were accepted;
+  - a route that invited nobody blocked any later route;
+  - the coordinator could create requests (I5);
+  - reply prompts promised commands that then failed;
+  - "closed" was shown for open requests;
+  - one trader could hold unlimited open requests (now 3);
+  - non-GSM text was counted as GSM;
+  - the stale-quote reply was unreachable;
+  - an early "no offer" warning arrived a minute after a request was made;
+  - a confusing message went to the seller who lost;
+  - a stranger could learn a request's state;
+  - "STOP." and "Stop please" were not honoured;
+  - the internal unit "bottle50" was shown to traders.
+- **First-use (consumer) review:** fixed the following:
+  - shortcut buttons send in one click;
+  - every text gets a plain, role-specific reply;
+  - a seller hears that their offer went out;
+  - WIDEN is confirmed to the buyer;
+  - offers say "1 crate for N credits";
+  - "4,300" and "N4200" prices work;
+  - a number before the price is no longer read as the price;
+  - with two open requests, offers say "Reply 1 E8";
+  - one crate per request is stated plainly;
+  - "tray" means crate;
+  - PAUSE and RESUME work;
+  - the hold-expiry message no longer blames the buyer.
+- **Judge review:** fixed the following:
+  - `steering/structure.md` now matches the code;
+  - "V2" is dropped;
+  - the pickup-code and shortage notes are revised;
+  - this log names every author.
+
+  The judge also flagged items that are still open: video, public URL, hooks, the recorded agent attack and Kiro CLI in CI.
+
+The fuzzer was rerun on the fixed build (seeds 777, 4242 and 9001). It found no invariant violations and no silent replies. Short offers whose place names use non-Latin letters go out as a single Unicode SMS of 70 characters or fewer.
+
+Checks: `tsc` 0 errors. Vitest 95/95. Node suites 52/52. Claude's original repros 8/8. API smoke and MCP smoke passed. A browser run of E7 completed in three clicks with no console errors. PostgreSQL tests were not re-run in this pass.
+
+Codex review tests changed to fit the 3-open-request cap: the shortage cases in `transport-regressions` and `mcp-smoke` now spread their asks across two traders.

@@ -71,6 +71,7 @@
       wrong_pickup_code: 'Use the pickup code shown on the buyer’s phone.',
       pickup_locked: 'Too many wrong codes. The buyer can confirm with DONE.',
       already_held: 'This request is already held. Confirm pickup with DONE.',
+      no_sellers: 'Nobody in the neighbouring circle can be invited right now. Try again later.',
       'pickup area is too long': 'Shorten the pickup area to 64 characters.',
       'choose a pickup': 'Check the seller inbox for the pickup to confirm.',
       'unparseable command': 'Check the reply and try again. Text HELP for available commands.',

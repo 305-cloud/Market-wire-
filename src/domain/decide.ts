@@ -35,6 +35,7 @@ export interface Rejection {
 }
 
 export const MAX_WRONG_PICKUP_CODES = 5
+export const MAX_OPEN_REQUESTS = 3
 
 function buyerOpenCount(state: MarketState, buyer: TraderId): number {
   return [...state.requests.values()].filter(r => r.requesterId === buyer &&
@@ -100,6 +101,11 @@ function decideCreateRequest(
   if (!requester) return { ok: false, reason: 'not_member', outbound: [] }
   if (requester.stoppedAt) return { ok: false, reason: 'stopped', outbound: [] }
   if (cmd.cutoffAt <= now) return { ok: false, reason: 'past_cutoff', outbound: [] }
+  // Claude fix (22 Nov): the coordinator does not trade (I5), and one trader keeps at most 3 open requests.
+  if (requester.role === 'coordinator') return { ok: false, reason: 'not_member', outbound: [] }
+  const openOwn = [...state.requests.values()].filter(r => r.requesterId === cmd.by &&
+    (r.state === 'open_local' || r.state === 'widened' || r.state === 'held')).length
+  if (openOwn >= MAX_OPEN_REQUESTS) return { ok: false, reason: 'too_many_open', outbound: [] }
 
   const code = `E${state.nextRequestNumber}`
   const at = now
@@ -165,6 +171,11 @@ function decideOffer(
 ): Decision | Rejection {
   const req = state.requests.get(cmd.requestCode)
   if (!req) return { ok: false, reason: 'unknown_request', outbound: [] }
+
+  // Claude fix (22 Nov): check the invitation before revealing the request's state to a stranger.
+  if (cmd.by !== req.requesterId && !req.invitedSellerIds.includes(cmd.by)) {
+    return { ok: false, reason: 'not_member', outbound: [] }
+  }
 
   const isClosed = req.state === 'collected' || req.state === 'cancelled' || req.state === 'expired'
   if (isClosed) return { ok: false, reason: 'closed', outbound: [
@@ -496,7 +507,7 @@ function decideCollect(
   ] }
 
   if (req.state !== 'held') return { ok: false, reason: 'closed', outbound: [
-    intent(cmd.by, 'request_closed', {}, `notheld:${cmd.requestCode}:${cmd.by}:${now.getTime()}`),
+    intent(cmd.by, req.state === 'open_local' || req.state === 'widened' ? 'nothing_held' : 'request_closed', { code: req.code }, `notheld:${cmd.requestCode}:${cmd.by}:${now.getTime()}`),
   ] }
 
   if (!hold) return { ok: false, reason: 'closed', outbound: [] }
@@ -554,7 +565,7 @@ function decideWiden(
   ] }
 
   if (req.state !== 'open_local') return { ok: false, reason: 'closed', outbound: [
-    intent(cmd.by, 'request_closed', {}, `notwidenable:${cmd.requestCode}:${cmd.by}:${now.getTime()}`),
+    intent(cmd.by, req.state === 'widened' ? 'already_widened' : 'request_closed', { code: req.code }, `notwidenable:${cmd.requestCode}:${cmd.by}:${now.getTime()}`),
   ] }
 
   if (now >= req.cutoffAt) return { ok: false, reason: 'past_cutoff', outbound: [
@@ -633,6 +644,8 @@ function decideRoute(
       !req.invitedSellerIds.includes(t.id) &&
       t.id !== req.requesterId,
   ).slice(0, 3)
+  // Claude fix (22 Nov): a route that would invite nobody used to succeed and block any later route.
+  if (candidates.length === 0) return { ok: false, reason: 'no_sellers', outbound: [] }
 
   const dispatchId = randomUUID()
   const at = now
@@ -753,7 +766,7 @@ function decideStop(
   ]
 
   const outbound: OutboundIntent[] = [
-    intent(cmd.by, 'stop_confirmed', {}, `stop:${cmd.by}`),
+    intent(cmd.by, 'stop_confirmed', {}, `stop:${cmd.by}:${now.getTime()}`),
   ]
 
   return { ok: true, events, outbound }
@@ -842,7 +855,8 @@ function decideTick(state: MarketState, now: Date): Decision {
     // Also removed `hasProposedOffer` suppression — a proposed but unaccepted offer
     // is not a confirmed pickup; the buyer still needs the fallback.
     const fallbackThreshold = minutesBefore(req.cutoffAt, 30)
-    if (now >= fallbackThreshold && !req.fallbackSentAt) {
+    const ageOk = !req.createdAt || now.getTime() - req.createdAt.getTime() >= 10 * 60_000
+    if (now >= fallbackThreshold && !req.fallbackSentAt && ageOk) {
       const msLeft = req.cutoffAt.getTime() - now.getTime()
       const minsLeft = Math.floor(msLeft / 60_000)
       events.push({
@@ -854,6 +868,7 @@ function decideTick(state: MarketState, now: Date): Decision {
       outbound.push(intent(req.requesterId, 'fallback_buyer', {
         code: req.code,
         timeLeft: `${minsLeft} min`,
+        ...(req.state === 'widened' ? { widened: 'yes' } : {}),
       }, `fallback:${req.code}:${now.getTime()}`))
     }
   }

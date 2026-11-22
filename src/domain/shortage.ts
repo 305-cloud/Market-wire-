@@ -13,6 +13,8 @@ export function shortageSummary(state: MarketState, now: Date, windowMinutes = S
   const groups = new Map<string, { circleId: string; item: Item; asked: number; filled: number; open: number }>()
   for (const request of state.requests.values()) {
     if (!request.createdAt || request.createdAt.getTime() <= start || request.createdAt > now) continue
+    // Claude fix (22 Nov): a request its own buyer cancelled is not an unmet ask (stops one trader faking a shortage).
+    if (request.state === 'cancelled') continue
     const circleId = state.traders.get(request.requesterId)?.circleId
     if (!circleId) continue
     const key = JSON.stringify([circleId, request.item.name, request.item.grade, request.item.unit])

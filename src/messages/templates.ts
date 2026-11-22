@@ -11,6 +11,8 @@ export type TemplateId =
   | 'offer_accepted_buyer'
   | 'offer_accepted_seller'
   | 'wrong_pickup_code'
+  | 'nothing_held'
+  | 'already_widened'
   | 'pickup_locked'
   | 'shortage_alert'
   | 'offer_released_accepted_other'
@@ -44,7 +46,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: your request for ${v.qty} ${v.unit} ${v.name} is open till ${v.cutoff}. Reply CANCEL to close.`,
 
   seller_invited: v =>
-    `${v.code}: spare ${v.qty} crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price, then pickup place, e.g. ${v.code} 4200 Cedar Lane.`,
+    `${v.code}: spare ${v.qty} crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price for 1 crate, then the pickup place.`,
 
   offer_received: v => {
     const full = `${v.code}: ${v.sellerAlias} offers 1 ${v.unit} for ${v.priceDisplay} credits, ${v.area}, hold till ${v.cutoff}. Reply ${v.ref} to hold.`
@@ -66,7 +68,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: your crate is held for the buyer till ${v.cutoff}. Reply when ready.`,
 
   offer_released_accepted_other: v =>
-    `${v.code}: offer not taken. Crate free. Reply ${v.code} price area for new request.`,
+    `${v.code}: the buyer chose another offer. Your crate is free.`,
 
   offer_released_crate_taken: v =>
     `${v.code}: that crate was taken by another buyer. Keep looking.`,
@@ -87,7 +89,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: buyer asks for 1 crate ${v.name}, ${v.area}, needed by ${v.cutoff}. Route it to a neighbouring circle from the desk.`,
 
   request_routed_seller: v =>
-    `${v.code}: spare 1 crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price, then pickup place, e.g. ${v.code} 4200 Cedar Lane.`,
+    `${v.code}: spare crate of ${v.name} needed by ${v.cutoff} in a nearby circle. To offer, reply ${v.code}, your price for 1 crate, then the pickup place.`,
 
   request_cancelled_buyer: v =>
     `${v.code}: cancelled.`,
@@ -99,13 +101,13 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: time is up. Call your usual contacts.`,
 
   hold_expired_buyer: v =>
-    `${v.code}: your hold expired. Reply WIDEN to ask the coordinator, or CANCEL.`,
+    `${v.code}: your hold ended at the deadline with no pickup, and the request closed. Send a new NEED to try again.`,
 
   hold_expired_seller: v =>
     `${v.code}: the hold ended at the deadline with no pickup. Your crate is free again.`,
 
   fallback_buyer: v =>
-    `${v.code}: no offer secured. Call your usual contacts. Time left: ${v.timeLeft}. Reply WIDEN or CANCEL.`,
+    `${v.code}: no crate held yet. Call your usual contacts too. Time left: ${v.timeLeft}. ${v.widened ? 'Reply CANCEL ' + v.code + ' to stop.' : 'Reply WIDEN or CANCEL.'}`,
 
   stop_confirmed: _v =>
     `Invitations paused. Reply START to resume. Active holds are unaffected.`,
@@ -133,6 +135,10 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
   stale_revision: v =>
     `${v.code}: that offer changed. The current offer is ${v.ref}. Reply ${v.ref} to hold, or wait for more.`,
 
+  nothing_held: v => `${v.code}: nothing is held yet. Reply an offer number to hold a crate first.`,
+
+  already_widened: v => `${v.code} is already with the coordinator. Offers still come to you. Reply CANCEL ${v.code} to stop.`,
+
   wrong_pickup_code: v => `That code doesn't match ${v.code}. Ask the buyer to read their pickup code again.`,
 
   pickup_locked: v => `${v.code}: too many wrong codes. Ask the buyer to reply DONE ${v.code} when they have the crate.`,
@@ -145,7 +151,7 @@ export function renderTemplate(id: TemplateId, vars: TemplateVars): string {
   if (!fn) throw new Error(`Unknown template: ${id}`)
   const result = fn(vars)
   // Normalize internal unit "crate30" to "crate" for user-facing copy
-  return result.replace(/crate30/g, 'crate')
+  return result.replace(/crate30/g, 'crate').replace(/bottle50/g, 'bottle')
 }
 
 /** Count GSM-7 septets for a string (approximation: treat extension chars as 2). */
@@ -155,9 +161,13 @@ export function gsmSeptetCount(s: string): number {
   // Extension chars (count 2 each): | ^ { } [ ] ~ \ €
   const extension = new Set('|^{}[]~\\€')
   let count = 0
+  let ucs2 = false
   for (const ch of s) {
     if (extension.has(ch)) count += 2
-    else count += 1
+    else if (basic.has(ch)) count += 1
+    else { ucs2 = true; count += 1 }
   }
-  return count
+  // Claude fix (22 Nov): any non-GSM character makes the whole SMS UCS-2, limited to 70 characters.
+  // Scale so that the existing 160 limits mean 70 characters in that case.
+  return ucs2 ? Math.ceil([...s].length * 160 / 70) : count
 }
