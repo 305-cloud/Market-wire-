@@ -1,0 +1,41 @@
+name: Market Wire checks
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: market_test
+          POSTGRES_PASSWORD: market_test_ci
+          POSTGRES_DB: market_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    env:
+      DATABASE_URL: postgresql://market_test:market_test_ci@127.0.0.1:5432/market_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - run: npm run migrate
+      - run: node --test review/core-regressions.test.mjs review/postgres-race.test.mjs review/check-report.test.mjs
+      - run: node --test review/transport-regressions.test.mjs
+      - run: node review/restart-smoke.mjs
+      - run: npm audit --omit=dev --audit-level=high

@@ -1,0 +1,3 @@
+# Product
+
+Market Wire helps a buyer find a spare crate after their usual supplier runs out. When Mara needs one crate of 30 medium eggs before 6 pm and her usual contact is out, she sends one message. A bounded circle of local sellers gets the request privately. Ellis can offer her spare crate with a price and pickup area. Mara sees the offer and replies 1 to hold it. When she collects it, both sides get a receipt. If nobody local can help, Mara alone can choose to widen the request to a neighbouring circle via the coordinator. The coordinator routes it but cannot reserve stock on Mara's behalf. The room sees nothing until Mara widens.

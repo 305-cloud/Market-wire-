@@ -1,0 +1,6 @@
+.env
+.env.*
+pilot/
+field-notes/
+*.gateway.json
+src/channels/sms-gateway.ts

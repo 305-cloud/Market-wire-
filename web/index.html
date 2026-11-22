@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f5f3">
+  <title>Market Wire · Dispatch desk</title>
+  <link rel="stylesheet" href="desk.css">
+</head>
+<body>
+  <a class="skip" href="#desk">Skip to dispatch desk</a>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="wordmark" href="#desk">Market Wire <span>Simulation</span></a>
+      <div class="session-tools">
+        <div class="local-time"><span>Market time</span><strong id="clockDisplay">—</strong></div>
+        <button class="button button-outline" id="resetBtn" type="button">Restart demo</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="desk" class="workspace">
+    <div class="hero">
+      <div class="hero-copy">
+        <h1>Dispatch desk</h1>
+        <p>Play both phones. Start by sending Ellis’s quote, then check Mara’s inbox.</p>
+      </div>
+      <dl class="session-readout" aria-label="Current market activity">
+        <div><dt>Current request</dt><dd id="footerState">Waiting for the wire</dd></div>
+        <div><dt>Open offers</dt><dd id="footerOffers">0</dd></div>
+      </dl>
+    </div>
+
+    <details class="guide">
+      <summary>Demo walkthrough</summary>
+      <div class="guide-content">
+        <div><strong>Find a crate locally</strong><p>Send Ellis’s quote. In Mara’s phone, hold it and confirm pickup, or use the pickup code on Ellis’s phone. Price ranges use simulated trade history.</p></div>
+        <div><strong>Ask the neighboring circle</strong><p>Open another request and ask the coordinator. Route the telex slip, then switch the seller phone to Rowan.</p></div>
+      </div>
+    </details>
+
+    <nav class="jump-links" aria-label="Jump to a desk">
+      <a href="#buyer">Buyer phone</a><a href="#sellers">Seller phone</a><a href="#room">Coordinator</a>
+    </nav>
+
+    <div id="statusBar" role="status" aria-live="polite"></div>
+
+    <div class="desk-grid">
+      <section id="buyer" class="panel phone buyer" aria-labelledby="mobileLbl">
+        <div class="panel-header">
+          <div><h2 id="mobileLbl">Buyer phone</h2><p>Mara · Local circle</p></div>
+          <time id="mobileClock"></time>
+        </div>
+        <div class="log" id="mobileLog" role="log" aria-live="polite" aria-label="Mara’s messages" tabindex="0"></div>
+        <div class="panel-controls">
+          <div class="shortcuts" aria-label="Buyer message shortcuts">
+            <button class="shortcut" data-target="mobileInput" data-text="NEED 1 CRATE EGGS BEFORE 6" type="button">New shortage</button>
+            <button class="shortcut" id="acceptBtn" data-target="mobileInput" data-text="" type="button" disabled>Hold offer</button>
+            <span class="extra-offers" id="extraOffers"></span>
+            <button class="shortcut" id="doneBtn" data-target="mobileInput" data-text="" type="button" disabled>Confirm pickup</button>
+            <button class="shortcut" id="widenBtn" data-target="mobileInput" data-text="" type="button" disabled>Ask coordinator</button>
+          </div>
+          <p class="field-feedback" id="mobileFeedback" role="status"></p>
+          <label for="mobileInput">Text from Mara</label>
+          <div class="send-area">
+            <input id="mobileInput" name="buyer-message" type="text" placeholder="Write a text…" autocomplete="off" maxlength="160" aria-describedby="mobileFeedback">
+            <button class="button button-primary" id="mobileSendBtn" type="button" aria-label="Send buyer text">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="sellers" class="panel phone seller" aria-labelledby="desktopLbl">
+        <div class="panel-header">
+          <div><h2 id="desktopLbl">Seller phone</h2><p>Local and neighboring sellers</p></div>
+          <time id="desktopClock"></time>
+        </div>
+        <div class="seller-switch">
+          <label for="senderSelect">Seller inbox</label>
+          <select id="senderSelect" name="seller">
+            <option value="ellis">Ellis · Local</option>
+            <option value="jules">Jules · Local</option>
+            <option value="rowan">Rowan · Neighbor</option>
+          </select>
+        </div>
+        <div class="log" id="desktopLog" role="log" aria-live="polite" aria-label="Seller messages" tabindex="0"></div>
+        <div class="panel-controls">
+          <div class="shortcuts" aria-label="Seller message shortcuts">
+            <span class="extra-offers" id="sellerQuotes"></span>
+            <button class="shortcut" data-target="desktopInput" data-text="STOP" type="button">Pause invites</button>
+          </div>
+          <p class="field-feedback" id="desktopFeedback" role="status"></p>
+          <label for="desktopInput">Text from seller</label>
+          <div class="send-area">
+            <input id="desktopInput" name="seller-message" type="text" placeholder="E7 4200 Cedar Lane…" autocomplete="off" maxlength="160" aria-describedby="desktopFeedback">
+            <button class="button button-primary" id="desktopSendBtn" type="button" aria-label="Send seller text">Send</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="room" class="panel room" aria-labelledby="roomLbl">
+        <div class="panel-header">
+          <div><h2 id="roomLbl">Coordinator room</h2><p>Requests shared by their buyers</p></div>
+          <time id="roomClock"></time>
+        </div>
+        <div class="room-tray">
+          <p class="empty-room">The wire is quiet.<span>Shared requests and shortage alerts appear here.</span></p>
+          <div class="log" id="roomLog" role="log" aria-live="polite" aria-label="Telex dispatches" tabindex="0"></div>
+        </div>
+        <div class="room-actions">
+          <button class="button button-dispatch" id="routeBtn" type="button" disabled>Send to neighboring circle</button>
+          <span id="routeFeedback" role="status"></span>
+        </div>
+      </section>
+    </div>
+
+    <footer class="desk-footer">
+      <div><p><strong>Inspired by Project Cybersyn</strong></p><p>Chile’s 1972 telex network helped coordinate goods during a truck strike.</p></div>
+      <div class="desk-tools">
+        <span id="footerMarket" class="session-reference" hidden>—</span>
+        <button class="button button-outline" id="advanceTimeBtn" type="button">Advance 10 min</button>
+      </div>
+    </footer>
+  </main>
+  <dialog id="resetDialog" aria-labelledby="resetTitle">
+    <form method="dialog">
+      <h2 id="resetTitle">Restart this demo?</h2>
+      <p>This clears the messages and requests in this session.</p>
+      <div class="dialog-actions">
+        <button class="button button-outline" value="cancel" autofocus>Keep working</button>
+        <button class="button button-primary" value="restart">Restart demo</button>
+      </div>
+    </form>
+  </dialog>
+  <noscript><p class="no-script">Turn on JavaScript to use the dispatch desk.</p></noscript>
+  <script src="client.js" defer></script>
+</body>
+</html>
