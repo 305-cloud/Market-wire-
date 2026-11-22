@@ -140,3 +140,47 @@ Tests: 5 new tests in `review/claude-fixes.test.mjs`:
 - a forced replay mismatch shows I7 broken.
 
 Checks: `tsc` 0 errors. Vitest 95/95. Node suites 57/57; the PostgreSQL race test needs a database and was not run. Claude's repros 8/8. API smoke and MCP smoke passed.
+
+## Consumer review, round 2, 22 November
+
+Author: Claude. A first-use agent tested the new build as a busy trader typing quickly, with typos, short forms and pidgin.
+
+**What it found:**
+- **Three unsafe readings.** Everyday words could trigger real actions:
+  - "egg don finish" (sold out) closed a held deal;
+  - "my shop dey open" was read as STOP;
+  - "hold 1" was read as PAUSE.
+- **Generic replies.** Texts with one piece missing got the general help text instead of a hint about what was missing.
+
+**Fixed:**
+- **Reader safety rule.** A reading for DONE, CANCEL, WIDEN, STOP, PAUSE, START, RESUME or GIVEN never runs without a YES. The question names the request, e.g. "Did you mean: DONE E7?".
+  - Everyday words that misfired were dropped: "don", "hold", "got", "finish" and others.
+  - Typo guesses need 5 or more letters.
+  - Polite forms of real commands ("done o", "Stop please") still run directly.
+- **STATUS.** "status", "my code" and "wetin dey happen" reply with:
+  - each open request;
+  - its offers;
+  - any hold and the buyer's pickup code.
+  
+  Sellers see their invites and offers, never the code.
+- **Hints.**
+  - A missing pickup place: "Add the pickup place: E7 3800 <place>".
+  - A seller price without a code: "Is this an offer for E7?".
+  - A missing time.
+  - An item other than eggs or milk.
+  - The seller help example now uses the seller's real request code.
+- **Other fixes.**
+  - "4.5k" prices work.
+  - Milk invites say "bottle", not "crate".
+  - The buyer is told when the coordinator routes their request.
+  - Plain replies for a seller's DONE, GIVEN on a closed request, and a repeated hold.
+
+**Not changed:** the buyer's own DONE still confirms collection, as designed, because the buyer is the one who received the crate.
+
+**Left for later** (product work): switching or releasing a hold, a seller backing out, a warning before a hold ends, routing by text, and "tomorrow" in times.
+
+**Checks:**
+- Node suites 60/60, including 8 new tests (2 reader safety, 3 round-two).
+- Vitest 95/95.
+- Repros 8/8.
+- API smoke and MCP smoke passed.
