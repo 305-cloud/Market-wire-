@@ -1,23 +1,24 @@
 # Structure
 
+Updated 22 Nov 2026 to match the code as built. Planned files that don't exist yet are listed separately, so nobody mistakes them for real ones.
+
 ```
 src/
-  domain/     types.ts commands.ts events.ts decide.ts evolve.ts invariants.ts
-  messages/   templates.ts
-  app/        handle.ts ingest.ts resolve-target.ts
-  infra/db/   db.ts schema.ts market-repo.ts migrations/0001_init.ts migrate.ts
-  infra/      clock.ts outbox.ts scheduler.ts bus.ts
-  channels/   channel.ts simulator.ts sms-gateway.ts
-  parser/     grammar.ts interpret.ts rule-interpreter.ts llm-interpreter.ts vocabulary.json
-  http/       server.ts demo-routes.ts coordinator-routes.ts webhook-routes.ts stream.ts security.ts
-  mcp/        server.ts tools.ts
-  seed/       demo-market.ts
-web/          index.html client.js
-scripts/      lint-templates.ts smoke.ts live-enrol.ts
+  index.ts      entry point (PORT, HOST)
+  domain/       types.ts commands.ts events.ts decide.ts evolve.ts invariants.ts
+                price-band.ts shortage.ts reliability.ts
+  app/          resolve-target.ts
+  parser/       grammar.ts interpret.ts rule-interpreter.ts
+  messages/     templates.ts
+  http/         server.ts (demo API, seeding, static web) demo-persistence.ts (PostgreSQL session snapshots)
+  infra/db/     db.ts schema.ts market-repo.ts migrate.ts migrations/0001_init.ts
+  mcp/          server.ts (stdio MCP server over the demo API)
+web/            index.html client.js
 test/
-  domain/     decide.test.ts
-  property/   model.property.test.ts seeds.json
-  parser/     grammar.test.ts rule-interpreter.test.ts resolve-target.test.ts
-  integration/ tick.test.ts isolation.test.ts ingest.test.ts outbox.test.ts api.test.ts
-  mcp/        tools.test.ts
+  domain/       decide.test.ts trader-features.test.ts
+  parser/       grammar.test.ts interpret.test.ts pm-hour-bugfix.test.ts resolve-target.test.ts rule-interpreter.test.ts
+review/         independent Node suites: core-regressions (2,500 seeded races), transport-regressions,
+                claude-fixes, postgres-race, restart-smoke, api-smoke, mcp-smoke, check-report
 ```
+
+Planned, not built: `src/channels/sms-gateway.ts` (Android SMS gateway; already listed in `.kiroignore` so the gateway's credentials stay out of Kiro's context), an LLM interpreter, and `.kiro/hooks` and `.kiro/agents`.

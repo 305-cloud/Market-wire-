@@ -1,4 +1,4 @@
-# Market Wire V2
+# Market Wire
 
 Market Wire helps a buyer find a spare crate after their usual supplier runs out. Local sellers get the first chance to help. The buyer decides if the shortage goes to a coordinator.
 
