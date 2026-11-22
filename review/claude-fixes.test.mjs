@@ -22,7 +22,8 @@ async function market() {
   const inbox = async who => (await state()).messages.filter(m => m.recipient === who)
   const e7 = async () => (await state()).requests.find(r => r.code === 'E7').state
   const rules = async (withToken = true) => server.inject({ method: 'GET', url: `/api/demo/markets/${marketId}/rules`, headers: withToken ? auth : {} })
-  return { send, state, clock, inbox, e7, rules }
+  const route = async requestCode => server.inject({ method: 'POST', url: `/api/demo/markets/${marketId}/coordinator/route`, headers: auth, payload: { requestCode } })
+  return { send, state, clock, inbox, e7, rules, route }
 }
 async function held() {
   const m = await market()
@@ -101,7 +102,7 @@ test('MINOR: a repeated "1 E7" after holding says "you already hold"', async () 
   const { m } = await held()
   const r = await m.send('mara', '1 E7')
   assert.equal(r.body.reason, 'already_held')
-  assert.match((await m.inbox('mara')).at(-1).text, /already hold this crate/)
+  assert.match((await m.inbox('mara')).at(-1).text, /already hold a crate/)
 })
 
 // ---- Fixes from the first-use (consumer) review, 22 Nov ----
@@ -326,4 +327,47 @@ test('RULES: a replay that differs after restore shows I7 broken', () => {
   assert.equal(report.broken, 1)
   assert.equal(report.rules.find(r => r.id === 'I7').holding, false)
   assert.ok(report.rules.filter(r => r.id !== 'I7').every(r => r.holding))
+})
+
+// Consumer round 2 (22 Nov): status, hints, units, wording.
+test('ROUND2: STATUS (and "my code", "wetin dey happen") lists what is open, with the pickup code', async () => {
+  const { m, code } = await held()
+  for (const t of ['status', 'my code?', 'wetin dey happen']) {
+    assert.equal((await m.send('mara', t)).code, 200, t)
+    assert.match((await m.inbox('mara')).at(-1).text, new RegExp(`E7 1 crate eggs till [0-9]{2}:[0-9]{2}: held from Ellis .*pickup code ${code}`))
+  }
+  await m.send('ellis', 'status')
+  assert.match((await m.inbox('ellis')).at(-1).text, /E7: the buyer holds your crate/)
+  assert.ok(!(await m.inbox('ellis')).some(x => x.text.includes(`code ${code}`)), 'the seller never sees the code')
+})
+
+test('ROUND2: hints say what is missing', async () => {
+  const m = await market()
+  await m.send('ellis', 'E7 3800')
+  assert.equal((await m.inbox('ellis')).at(-1).text, 'Add the pickup place: E7 3800 <place>.')
+  await m.send('ellis', 'i get egg 1 crate 3200 for shop 4')
+  assert.match((await m.inbox('ellis')).at(-1).text, /Is this an offer for E7\? Reply E7 3200 <pickup place>/)
+  await m.send('jules', 'need 1 crate tomato before 5pm')
+  assert.match((await m.inbox('jules')).at(-1).text, /eggs and milk/)
+  await m.send('jules', 'need eggs')
+  assert.match((await m.inbox('jules')).at(-1).text, /Add a time/)
+})
+
+test('ROUND2: 4.5k prices, milk units for sellers, routed notice, seller DONE and closed GIVEN wording', async () => {
+  const m = await market()
+  assert.equal((await m.send('ellis', 'E7 4.5k Cedar Lane')).code, 200)
+  assert.match((await m.inbox('mara')).at(-1).text, /4,500 credits/)
+  assert.equal((await m.send('jules', 'NEED 1 CRATE MILK BEFORE 6PM')).code, 200)
+  assert.match((await m.inbox('ellis')).at(-1).text, /spare 1 bottle milk .* price for 1 bottle/)
+  await m.send('ellis', 'DONE')
+  assert.match((await m.inbox('ellis')).at(-1).text, /Sellers confirm a handover with GIVEN/)
+  await m.send('mara', 'WIDEN E7')
+  const s = await m.state()
+  // route through the desk endpoint via the helper server
+  await m.route('E7')
+  assert.match((await m.inbox('mara')).at(-1).text, /E7: the coordinator sent your request to the North circle/)
+  await m.send('mara', 'CANCEL E7')
+  await m.send('ellis', 'GIVEN 123 E7')
+  assert.match((await m.inbox('ellis')).at(-1).text, /E7: this request has been cancelled/)
+  assert.ok(s)
 })

@@ -185,9 +185,52 @@ function isSellerNow(state: MarketState, traderId: TraderId): boolean {
 
 const COORD_HELP = 'Coordinator desk: widened requests and shortage alerts arrive here. Route a widened request from the desk. The desk does not buy or sell.'
 
+const LIVE_STATES = new Set(['open_local', 'widened', 'held'])
+const unitWord = (unit: string) => unit.replace(/crate30/g, 'crate').replace(/bottle50/g, 'bottle')
+const hhmm = (d: Date) => d.toISOString().slice(11, 16)
+
+/** Open requests that invite this trader as a seller (most recent last). */
+function invitesFor(state: MarketState, traderId: TraderId) {
+  return [...state.requests.values()].filter(r => r.requesterId !== traderId &&
+    r.invitedSellerIds.includes(traderId) && LIVE_STATES.has(r.state))
+}
+
 function roleHelp(state: MarketState, traderId: TraderId): string {
   if (state.traders.get(traderId)?.role === 'coordinator') return COORD_HELP
-  return isSellerNow(state, traderId) ? SELLER_HELP : BUYER_HELP
+  if (!isSellerNow(state, traderId)) return BUYER_HELP
+  // Claude (22 Nov, consumer round 2): use the seller's real request code in the example.
+  const code = invitesFor(state, traderId).at(-1)?.code ?? 'E7'
+  return SELLER_HELP.replace(/E7/g, code)
+}
+
+/** Claude (22 Nov, consumer round 2): one reply with everything open for this trader. */
+function statusReply(state: MarketState, traderId: TraderId): string {
+  if (state.traders.get(traderId)?.role === 'coordinator') {
+    const widened = [...state.requests.values()].filter(r => r.state === 'widened').map(r => r.code)
+    return widened.length ? `Shared with the desk: ${widened.join(', ')}. Route them from the desk.` : 'Nothing is shared with the desk right now.'
+  }
+  const lines: string[] = []
+  for (const r of state.requests.values()) {
+    if (r.requesterId !== traderId || !LIVE_STATES.has(r.state)) continue
+    const what = `${r.code} ${r.quantity} ${unitWord(r.item.unit)} ${r.item.name} till ${hhmm(r.cutoffAt)}`
+    const hold = [...state.holds.values()].find(h => h.requestCode === r.code && h.state === 'live')
+    if (hold) {
+      const seller = state.traders.get(state.offers.get(hold.offerId)?.sellerId ?? '')?.alias ?? 'the seller'
+      lines.push(`${what}: held from ${seller} till ${hhmm(hold.heldUntil)}, pickup code ${hold.pickupCode ?? '-'}`)
+    } else {
+      const offers = [...state.offers.values()].filter(o => o.requestCode === r.code && o.state === 'proposed').length
+      lines.push(`${what}: ${offers} offer${offers === 1 ? '' : 's'}${r.state === 'widened' ? ', shared with the coordinator' : ''}`)
+    }
+  }
+  for (const r of invitesFor(state, traderId)) {
+    const myHold = [...state.holds.values()].find(h => h.requestCode === r.code && h.state === 'live' &&
+      state.offers.get(h.offerId)?.sellerId === traderId)
+    const mine = [...state.offers.values()].find(o => o.requestCode === r.code && o.sellerId === traderId && o.state === 'proposed')
+    lines.push(myHold ? `${r.code}: the buyer holds your crate; ask for their code, then GIVEN code ${r.code}`
+      : mine ? `${r.code}: your offer of ${(mine.priceKobo / 100).toLocaleString('en')} credits is waiting`
+      : `${r.code}: you're invited to offer, needed by ${hhmm(r.cutoffAt)}`)
+  }
+  return lines.length ? lines.join('. ') + '.' : 'Nothing open for you. To ask: NEED 1 CRATE EGGS BEFORE 5PM.'
 }
 
 function fallbackReply(state: MarketState, traderId: TraderId, why: string): string {
@@ -559,6 +602,13 @@ export async function createServer() {
       const state = buildState(market)
       const now   = market.baseTime
       // Claude fix (22 Nov): traders write "Done.", "done o", "pause"; normalise before matching commands.
+      // Claude (22 Nov, consumer round 2): STATUS, and the ways traders ask for it.
+      if (/^(status|my status|update|any update|updates|my code|code|wetin dey happen|wetin dey|where my code|what is my code|whats my code|what's my code)\??$/i.test(text.trim())) {
+        pendingSuggestions.get(market)?.delete(traderId)
+        deliverInbox(market, traderId, statusReply(buildState(market), traderId))
+        await persistMarket(market)
+        return res.send({ status: 'ok' })
+      }
       // Claude (22 Nov): rule-based reader for messy texts ("abeg i need 2 crate egg b4 6").
       // Sure readings run as the canonical command; unsure ones are offered back for a YES.
       {
@@ -712,7 +762,9 @@ export async function createServer() {
         }
 
         if (!requestCode) {
-          deliverInbox(market, traderId, 'You have no pickup to confirm. Hold an offer first by replying its number.')
+          deliverInbox(market, traderId, isSellerNow(state, traderId)
+            ? 'Sellers confirm a handover with GIVEN and the buyer\'s code, e.g. GIVEN 123 ' + (invitesFor(state, traderId).at(-1)?.code ?? 'E7') + '.'
+            : 'You have no pickup to confirm. Hold an offer first by replying its number.')
           await persistMarket(market)
           return guard(400, { error: 'no held request' })
         }
@@ -797,6 +849,12 @@ export async function createServer() {
           await persistMarket(market)
           return guard(400, { error: 'choose a pickup' })
         }
+        const closed = given.requestCode ? state.requests.get(given.requestCode as RequestCode) : undefined
+        if (closed && (closed.state === 'expired' || closed.state === 'cancelled')) {
+          deliverInbox(market, traderId, `${closed.code}: this request has ${closed.state === 'expired' ? 'ended' : 'been cancelled'}, so there is no handover to confirm.`)
+          await persistMarket(market)
+          return guard(400, { status: 'rejected', reason: 'closed' })
+        }
         cmd = { kind: 'collect', by: traderId, requestCode: given.requestCode ?? candidates[0].requestCode,
           pickupCode: given.pickupCode }
       }
@@ -858,7 +916,7 @@ export async function createServer() {
           }
 
           if (!/\b(eggs?|milk)\b/i.test(text)) {
-            deliverInbox(market, traderId, 'For now Market Wire handles eggs (and milk). Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.')
+            deliverInbox(market, traderId, 'For now Market Wire handles eggs and milk. Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.')
             await persistMarket(market)
             return guard(400, { error: 'unsupported item' })
           }
@@ -898,10 +956,28 @@ export async function createServer() {
           }
           if (heldByMe.length === 1) {
             const code = heldByMe[0]!.code
-            deliverInbox(market, traderId, `${code}: you already hold this crate. Reply DONE ${code} when you collect.`)
+            deliverInbox(market, traderId, `${code}: you already hold a crate on this request. Reply DONE ${code} when you collect it, or CANCEL ${code} to start again.`)
             await persistMarket(market)
             return guard(400, { status: 'rejected', reason: 'already_held' })
           }
+        }
+        // Claude (22 Nov, consumer round 2): say what is missing instead of the general help.
+        const lower = text.trim().toLowerCase()
+        const noPlace = /^(e\d+)\s+[n₦#]?(\d[\d,.]*k?)\s*$/i.exec(text.trim())
+        const myInvites = invitesFor(state, traderId)
+        let hint: string | undefined
+        if (noPlace) hint = `Add the pickup place: ${noPlace[1]!.toUpperCase()} ${noPlace[2]} <place>.`
+        else if (myInvites.length === 1 && !/\be\d+\b/i.test(lower) && /\b\d{3,}(?:\.\d+)?k?\b|\b\d+(?:\.\d+)?k\b/i.test(lower)) {
+          const price = /\b(\d[\d,]{2,}|\d+(?:\.\d+)?k)\b/i.exec(lower)?.[1] ?? '4200'
+          hint = `Is this an offer for ${myInvites[0]!.code}? Reply ${myInvites[0]!.code} ${price} <pickup place>.`
+        } else if (/\b(need|nid|want|wan)\b/.test(lower)) {
+          hint = !/\b(eggs?|egg|milk)\b/.test(lower) ? 'For now Market Wire handles eggs and milk. Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.'
+            : !/\b(before|by|b4)\b/.test(lower) ? 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.' : undefined
+        }
+        if (hint) {
+          deliverInbox(market, traderId, hint)
+          await persistMarket(market)
+          return guard(400, { error: 'unparseable command' })
         }
         const quoteLike = /^(E\d+)\b/i.exec(text.trim())
         deliverInbox(market, traderId, quoteLike && state.traders.get(traderId)?.role !== 'coordinator'
@@ -975,6 +1051,8 @@ export async function createServer() {
       for (const ev of d.events) market.events.push(ev)
       const state2 = buildState(market)
       flushOutbound(market, d.outbound, state2)
+      // Claude (22 Nov, consumer round 2): tell the buyer their request went to the North circle.
+      deliverInbox(market, reqRec.requesterId, `${requestCode}: the coordinator sent your request to the North circle. Offers from there arrive here.`)
       await persistMarket(market)
 
       return res.send({ status: 'ok' })

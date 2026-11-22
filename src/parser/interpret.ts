@@ -213,7 +213,10 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
   if (!/^E\d+$/.test(requestCode)) return null
 
   // Claude fix (22 Nov): accept how traders write prices: 4,300 / N4200 / ₦4200.
-  const pricePart = parts[1].replace(/^(?:N|₦)/i, '').replace(/,(?=\d{3}(?:,|$))/g, '')
+  let pricePart = parts[1].replace(/^(?:N|₦)/i, '').replace(/,(?=\d{3}(?:,|$))/g, '')
+  // "4.5k" and "4k" mean thousands.
+  const kilo = /^(\d+(?:\.\d{1,3})?)k$/i.exec(pricePart)
+  if (kilo) pricePart = String(Math.round(Number(kilo[1]) * 1000))
   const priceMatch = pricePart.match(/^(\d+)$/)
   if (!priceMatch) return null
   const priceInput = parseInt(priceMatch[1], 10)

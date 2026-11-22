@@ -46,7 +46,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: your request for ${v.qty} ${v.unit} ${v.name} is open till ${v.cutoff}. Reply CANCEL to close.`,
 
   seller_invited: v =>
-    `${v.code}: spare ${v.qty} crate ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price for 1 crate, then the pickup place.`,
+    `${v.code}: spare ${v.qty} ${v.unit ?? 'crate'} ${v.name} needed by ${v.cutoff}. To offer, reply ${v.code}, your price for 1 ${v.unit ?? 'crate'}, then the pickup place.`,
 
   offer_received: v => {
     const full = `${v.code}: ${v.sellerAlias} offers 1 ${v.unit} for ${v.priceDisplay} credits, ${v.area}, hold till ${v.cutoff}. Reply ${v.ref} to hold.`
@@ -89,7 +89,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: buyer asks for 1 crate ${v.name}, ${v.area}, needed by ${v.cutoff}. Route it to a neighbouring circle from the desk.`,
 
   request_routed_seller: v =>
-    `${v.code}: spare crate of ${v.name} needed by ${v.cutoff} in a nearby circle. To offer, reply ${v.code}, your price for 1 crate, then the pickup place.`,
+    `${v.code}: spare ${v.unit ?? 'crate'} of ${v.name} needed by ${v.cutoff} in a nearby circle. To offer, reply ${v.code}, your price for 1 ${v.unit ?? 'crate'}, then the pickup place.`,
 
   request_cancelled_buyer: v =>
     `${v.code}: cancelled.`,

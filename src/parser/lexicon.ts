@@ -153,6 +153,6 @@ export function looksCanonical(text: string): boolean {
     /^\d+\.?(\s+E\d+)?(\s+V\d+)?[.!?]?$/i.test(t) ||
     /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)(\s+E\d+)?(\s+(o+|pls|please|thanks|thank you|now|abeg))*(\s+E\d+)?[.!?]*$/i.test(t) ||
     /^GIVEN\s+\d{3}(\s+E\d+)?[.!?]?$/i.test(t) ||
-    /^(YES|NO)[.!?]?$/i.test(t) ||
+    /^(YES|NO|STATUS)[.!?]?$/i.test(t) ||
     /^NEED\s+\d+\s+(CRATES?|TRAYS?)\s+(EGGS|MILK)\s+(BEFORE|BY)\s+\d{1,2}(:\d{2})?\s*(AM|PM)?[.!?]?$/i.test(t)
 }
