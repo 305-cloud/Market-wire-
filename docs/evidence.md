@@ -180,7 +180,7 @@ Author: Claude. A first-use agent tested the new build as a busy trader typing q
 **Left for later** (product work): switching or releasing a hold, a seller backing out, a warning before a hold ends, routing by text, and "tomorrow" in times.
 
 **Checks:**
-- Node suites 60/60, including 8 new tests (2 reader safety, 3 round-two).
+- Node suites 60/60. This round added 3 tests, and the reader test now checks the YES rule.
 - Vitest 95/95.
 - Repros 8/8.
 - API smoke and MCP smoke passed.
