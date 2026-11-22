@@ -66,7 +66,7 @@ export interface Market {
 const inboundBodySchema = z.object({
   alias:             z.string().min(1).max(64),
   text:              z.string().min(1).max(640),
-  providerMessageId: z.string().min(1).max(128),
+  providerMessageId: z.string().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/),
 })
 
 // ---------------------------------------------------------------------------
@@ -136,7 +136,7 @@ async function requireBearer(req: FastifyRequest, market: Market): Promise<boole
     const token = auth.replace(/^Bearer\s+/i, '')
     return verifyTokenHash(market.id, token)
   }
-  return auth === `Bearer ${market.token}`
+  return auth.replace(/^Bearer\s+/i, '') === market.token && /^Bearer\s+/i.test(auth)
 }
 
 /** Map outbound-intent recipient to desktop|mobile|room for the UI. */
@@ -337,9 +337,21 @@ function seedMarket(market: Market): void {
 // Server factory
 // ---------------------------------------------------------------------------
 
+/** Final review (22 Nov): per-market size cap, so one token can't grow a market without bound. */
+const MAX_MARKET_MESSAGES = 1500
+const MAX_MARKET_EVENTS = 3000
+function marketFull(market: Market): boolean {
+  return market.messages.length >= MAX_MARKET_MESSAGES || market.events.length >= MAX_MARKET_EVENTS
+}
+const isLoopback = (req: FastifyRequest) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.ip)
+/** Per-visitor limits on signed-in routes. Local runs and tests on this machine are exempt. */
+const WRITE_LIMIT = { config: { rateLimit: { max: 120, timeWindow: '1 minute', allowList: isLoopback } } }
+const READ_LIMIT = { config: { rateLimit: { max: 600, timeWindow: '1 minute', allowList: isLoopback } } }
+
 export async function createServer() {
   const markets = new Map<string, Market>()
-  const server = Fastify({ logger: false, bodyLimit: 16 * 1024 })
+  // Behind a hosting proxy set TRUST_PROXY=1 so rate limits see each visitor's address, not the proxy's.
+  const server = Fastify({ logger: false, bodyLimit: 16 * 1024, trustProxy: process.env.TRUST_PROXY === '1' })
 
   const __dirname = dirname(fileURLToPath(import.meta.url))
   const webRoot = join(__dirname, '../../web')
@@ -359,7 +371,7 @@ export async function createServer() {
   // Keyed by marketId → real wall-clock creation ms.  Map size == live count
   // after sweeping expired entries, so no separate list is needed.
   // ---------------------------------------------------------------------------
-  const MARKET_CAP = 100
+  const MARKET_CAP = Math.max(1, Number(process.env.MARKET_CAP) || 100)
   const MARKET_WINDOW_MS = 24 * 60 * 60 * 1000
 
   /** Remove entries older than 24 h and expire stale DB snapshots, then return live count. */
@@ -437,6 +449,7 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/state',
+    READ_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
@@ -493,6 +506,7 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/shortages',
+    READ_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
@@ -506,6 +520,7 @@ export async function createServer() {
   // fresh check of the current state and a save-and-restore replay (I7) on every report.
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/rules',
+    READ_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
@@ -517,6 +532,7 @@ export async function createServer() {
 
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/events',
+    READ_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
@@ -533,6 +549,7 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/messages',
+    READ_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
@@ -551,11 +568,13 @@ export async function createServer() {
     Body: unknown
   }>(
     '/api/demo/markets/:id/inbound',
+    WRITE_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
       if (!market) return res.code(404).send({ error: 'not found' })
       if (!(await requireBearer(req, market))) return res.code(401).send({ error: 'unauthorized' })
+      if (marketFull(market)) return res.code(429).send({ error: 'This demo market is full. Choose Restart demo to start a fresh one.' })
 
       // Bug 8: validate body shape with zod before touching anything else
       const parsed = inboundBodySchema.safeParse(req.body)
@@ -591,7 +610,8 @@ export async function createServer() {
       if (!traderId) return res.code(400).send({ error: 'unknown alias' })
 
       // Idempotency (keyed only after alias is confirmed valid)
-      const dkey = `provider:${providerMessageId}`
+      // Final hacker review: key on the sender too, so one trader can't pre-seed ids to drop another's text.
+      const dkey = `provider:${actor}:${providerMessageId}`
       if (market.dedupe.has(dkey)) {
         return res.send({ status: 'duplicate' })
       }
@@ -661,6 +681,9 @@ export async function createServer() {
           deliverInbox(market, traderId, fallbackReply(state, traderId, String(body.error ?? body.reason ?? '')))
           await persistMarket(market)
         }
+        // Final review: the same reason whether a request exists or was never shared with this trader.
+        const reason = body.reason
+        if (reason === 'not_requester' || reason === 'unknown_request' || reason === 'not_member') body = { ...body, reason: 'not_allowed' }
         return res.code(code).send(body)
       }
 
@@ -1037,11 +1060,13 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.post<{ Params: { id: string }; Body: { requestCode: string } }>(
     '/api/demo/markets/:id/coordinator/route',
+    WRITE_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
       if (!market) return res.code(404).send({ error: 'not found' })
       if (!(await requireBearer(req, market))) return res.code(401).send({ error: 'unauthorized' })
+      if (marketFull(market)) return res.code(429).send({ error: 'This demo market is full. Choose Restart demo to start a fresh one.' })
 
       const requestCode = req.body?.requestCode
       if (!requestCode) return res.code(400).send({ error: 'requestCode required' })
@@ -1082,11 +1107,13 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.post<{ Params: { id: string }; Body: { minutes?: number } }>(
     '/api/demo/markets/:id/clock',
+    WRITE_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)
       if (!market) return res.code(404).send({ error: 'not found' })
       if (!(await requireBearer(req, market))) return res.code(401).send({ error: 'unauthorized' })
+      if (marketFull(market)) return res.code(429).send({ error: 'This demo market is full. Choose Restart demo to start a fresh one.' })
 
       const mins = Number(req.body?.minutes ?? 10)
       if (typeof req.body?.minutes !== 'undefined' && typeof req.body?.minutes !== 'number' || !Number.isInteger(mins) || mins < 1 || mins > 1440) {
@@ -1114,6 +1141,7 @@ export async function createServer() {
   // ------------------------------------------------------------------
   server.post<{ Params: { id: string } }>(
     '/api/demo/markets/:id/reset',
+    WRITE_LIMIT,
     async (req, res) => {
       await sweepAndCount()
       const market = markets.get(req.params.id)

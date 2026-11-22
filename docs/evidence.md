@@ -219,3 +219,48 @@ Author: Claude. A stress agent ran about 15,800 random texts (360 sequences, 3 s
 - Vitest 95/95.
 - Repros 8/8.
 - API smoke and MCP smoke passed.
+
+## Final stress test and hacker review, 22 November
+
+Author: Claude. Two agents attacked the finished build: a stress tester (Claude Sonnet) and a security tester (Claude Opus). Their scope was the local copy only.
+
+**Stress test.** About 126,000 texts across 1,800 sequences in four modes, with every invariant checked after every step. Parallel holds, GIVENs, duplicate message ids, YES replies and resets were fired at the live server.
+
+What held:
+- Zero invariant breaks, zero 500 errors and zero silent replies.
+- One hold and one collection per request under parallel load.
+- The rules panel never raised a false alarm.
+- Latency grows linearly with the event log: p50 8 ms and p95 28 ms at 3,000 events.
+
+**Security test.** Attacks that held:
+- **Market isolation:** tokens were checked across markets, and no token appeared in any URL or response.
+- **Prototype pollution:** rejected by Fastify's safe JSON parser.
+- **Stored XSS:** the desk renders all text with textContent, and the content security policy is strict.
+- **SQL injection:** all queries are parameterised.
+- **Path traversal:** blocked.
+- **Regex slowdowns (ReDoS):** the parser and reader run in linear time.
+- **Pickup-code brute force:** GIVEN locks after 5 wrong codes.
+- **X-Forwarded-For spoofing:** it did not bypass rate limits.
+
+**Fixed:**
+- **Unbounded per-market growth (memory and bandwidth denial of service), proven by both agents.** Each market now stops at 1,500 messages or 3,000 events and asks the visitor to restart the demo.
+- **No rate limit on signed-in routes.** Visitors now get 120 writes and 600 reads a minute. Loopback is exempt, so local runs and tests are not limited. `TRUST_PROXY=1` makes the limits see real visitor addresses behind a hosting proxy.
+- **Duplicate-message ids were shared by all traders,** so one trader could pre-seed an id to drop another's text. Ids are now keyed per sender.
+- **The HTTP rejection reason differed for unknown and unshared requests.** It is now the same (`not_allowed`).
+- **Smaller fixes:**
+  - message ids with control characters are refused;
+  - `bearer` in lowercase is accepted;
+  - MCP tools only accept well-formed market ids;
+  - `MARKET_CAP` can be set.
+
+**Left as is:**
+- **404 versus 401 for unknown market ids:** ids are random UUIDs, and the client relies on the 404 to know a session has ended.
+- **Each market has one token for all its traders:** this is a simulator design choice.
+- **Long non-Latin place names make UCS-2 texts:** already known.
+
+**Checks:**
+- Node suites 68/68 (3 new tests).
+- Vitest 95/95.
+- Repros 8/8.
+- API smoke and MCP smoke passed.
+- The browser desk loads with all 9 rules holding and no console errors.

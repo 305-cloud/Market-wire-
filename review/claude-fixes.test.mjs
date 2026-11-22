@@ -425,3 +425,44 @@ test('STRESS3: strangers learn nothing; unknown and uninvited codes get the same
   assert.ok(!/cancel/i.test(a), a)
   assert.equal(b, c)
 })
+
+// Final stress and hacker review (22 Nov): size cap, per-sender dedupe, uniform reasons, input hygiene.
+test('FINAL: a market stops growing at its size cap and says why', async () => {
+  const m = await market()
+  let last
+  for (let i = 0; i < 800; i++) {
+    last = await m.send('ellis', 'HELP')
+    if (last.code === 429) break
+  }
+  assert.equal(last.code, 429)
+  assert.match(last.body.error, /This demo market is full/)
+  const size = (await m.state()).messages.length
+  assert.equal((await m.send('mara', 'HELP')).code, 429)
+  assert.equal((await m.state()).messages.length, size)
+})
+
+test('FINAL: one trader cannot pre-seed another trader\'s message id', async () => {
+  const server = await createServer()
+  servers.push(server)
+  const { marketId, token } = (await server.inject({ method: 'POST', url: '/api/demo/markets', payload: {} })).json()
+  const headers = { authorization: `Bearer ${token}` }
+  const send = (alias, text) => server.inject({ method: 'POST', url: `/api/demo/markets/${marketId}/inbound`, headers,
+    payload: { alias, text, providerMessageId: 'same-id' } })
+  assert.equal((await send('jules', 'HELP')).json().status, 'ok')
+  assert.notEqual((await send('ellis', 'E7 4200 Cedar Lane')).json().status, 'duplicate')
+})
+
+test('FINAL: strangers get one reason for unknown and unshared requests; ids reject control characters; bearer is case-insensitive', async () => {
+  const server = await createServer()
+  servers.push(server)
+  const { marketId, token } = (await server.inject({ method: 'POST', url: '/api/demo/markets', payload: {} })).json()
+  const url = `/api/demo/markets/${marketId}/inbound`
+  const send = (alias, text, providerMessageId = randomUUID(), scheme = 'Bearer') => server.inject({ method: 'POST', url,
+    headers: { authorization: `${scheme} ${token}` }, payload: { alias, text, providerMessageId } })
+  const a = (await send('coordinator', 'CANCEL E7')).json().reason
+  const b = (await send('coordinator', 'CANCEL E99')).json().reason
+  assert.equal(a, b)
+  assert.equal((await send('jules', 'HELP', 'id\u0000x')).statusCode, 400)
+  assert.equal((await send('jules', 'HELP', randomUUID(), 'bearer')).statusCode, 200)
+  assert.equal((await send('jules', 'HELP', randomUUID(), 'Basic')).statusCode, 401)
+})

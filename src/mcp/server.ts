@@ -42,7 +42,7 @@ const DEMO_TOOLS = {
     name: 'market_send',
     description: 'Send an inbound message to a demo market',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
       alias: z.string().min(1),
       text: z.string().min(1),
       providerMessageId: z.string().min(1),
@@ -52,7 +52,7 @@ const DEMO_TOOLS = {
     name: 'market_send_duplicate',
     description: 'Send a duplicate inbound message to test idempotency',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
       alias: z.string().min(1),
       text: z.string().optional(),
     },
@@ -61,7 +61,7 @@ const DEMO_TOOLS = {
     name: 'market_send_late',
     description: 'Send a late inbound message to test time handling',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
       alias: z.string().min(1),
       text: z.string().min(1),
       minutes: z.number().int().min(0),
@@ -71,7 +71,7 @@ const DEMO_TOOLS = {
     name: 'market_advance_clock',
     description: 'Advance the demo market clock by minutes',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
       minutes: z.number().int().min(0),
     },
   },
@@ -79,20 +79,20 @@ const DEMO_TOOLS = {
     name: 'market_state',
     description: 'Get the current state of a demo market',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
     },
   },
   market_events: {
     name: 'market_events',
     description: 'Get all domain events for a demo market',
     inputSchema: {
-      marketId: z.string().min(1),
+      marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/),
     },
   },
   market_shortages: {
     name: 'market_shortages',
     description: 'Read aggregate shortages in a demo market',
-    inputSchema: { marketId: z.string().min(1) },
+    inputSchema: { marketId: z.string().regex(/^demo_[0-9a-f-]{36}$/) },
   },
 } as const;
 

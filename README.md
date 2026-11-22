@@ -48,3 +48,5 @@ The checker validates the shape and recorded outcomes of a run. Use the underlyi
 ## Deploying
 
 `Dockerfile` builds the in-memory simulator and listens on `0.0.0.0:$PORT`. Set `DATABASE_URL` to a managed PostgreSQL 16 database for durable sessions. A public deployment needs the owner's approval and should stay up until judging ends on 29 January 2027.
+
+Behind a hosting proxy, set `TRUST_PROXY=1` so the rate limits see each visitor's address instead of the proxy's. `MARKET_CAP` sets how many demo markets can exist in a 24-hour window (default 100). Each market stops growing at 1,500 messages or 3,000 events and asks the visitor to restart the demo. Signed-in routes allow 120 writes and 600 reads a minute per visitor. Requests from this machine are exempt, so local runs and tests are not limited.
