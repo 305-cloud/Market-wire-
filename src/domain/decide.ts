@@ -10,7 +10,7 @@ import type { TemplateId, TemplateVars } from '../messages/templates.js'
 import { renderTemplate } from '../messages/templates.js'
 import { priceBand, formatBandLine } from './price-band.js'
 import { reliability } from './reliability.js'
-import { shortageSummary, SHORTAGE_WINDOW_MINUTES } from './shortage.js'
+import { shortageSummary, shortageAlertKey, SHORTAGE_WINDOW_MINUTES } from './shortage.js'
 
 export interface OutboundIntent {
   to: TraderId
@@ -30,7 +30,11 @@ export interface Rejection {
   ok: false
   reason: RejectReason
   outbound: OutboundIntent[]
+  /** Audit events a rejection still records (e.g. a wrong pickup code). They change no exchange state. */
+  events?: DomainEvent[]
 }
+
+export const MAX_WRONG_PICKUP_CODES = 5
 
 function intent(
   to: TraderId,
@@ -381,7 +385,7 @@ function decideAccept(
       code: cmd.requestCode,
       cutoff: fmtTime(req.cutoffAt),
       buyerAlias: state.traders.get(cmd.by)?.alias ?? 'Buyer',
-      ...(cmd.pickupCode ? { pickupCode: cmd.pickupCode } : {}),
+      ...(cmd.pickupCode ? { askCode: 'yes' } : {}),
       record: recordLabel(state, cmd.by, true),
     }, `accept_seller:${cmd.requestCode}:${targetOffer.id}`),
   ]
@@ -445,10 +449,22 @@ function decideCollect(
   const seller = offer ? state.traders.get(offer.sellerId) : undefined
   if (fromSeller && offer?.sellerId !== cmd.by) return { ok: false, reason: 'not_member', outbound: [] }
   if (!fromSeller && cmd.by !== req.requesterId) return { ok: false, reason: 'not_requester', outbound: [] }
-  if (fromSeller && cmd.pickupCode !== hold?.pickupCode) {
-    return { ok: false, reason: 'wrong_pickup_code', outbound: [
-      intent(cmd.by, 'wrong_pickup_code', { code: req.code }, `wrong_pickup:${req.code}:${cmd.by}:${now.getTime()}`),
+  // Claude fix (22 Nov): cap wrong pickup codes per hold so a seller cannot guess the buyer's code.
+  if (fromSeller && hold?.state === 'live' && (hold.wrongCodeAttempts ?? 0) >= MAX_WRONG_PICKUP_CODES) {
+    return { ok: false, reason: 'pickup_locked', outbound: [
+      intent(cmd.by, 'pickup_locked', { code: req.code }, `pickup_locked:${req.code}:${cmd.by}:${now.getTime()}`),
     ] }
+  }
+  if (fromSeller && cmd.pickupCode !== hold?.pickupCode) {
+    const attempts = (hold?.wrongCodeAttempts ?? 0) + 1
+    const locked = hold?.state === 'live' && attempts >= MAX_WRONG_PICKUP_CODES
+    return { ok: false, reason: locked ? 'pickup_locked' : 'wrong_pickup_code',
+      events: hold?.state === 'live' ? [{ type: 'pickup_code_rejected', workspaceId: state.workspaceId,
+        holdId: hold.id, requestCode: req.code, by: cmd.by, at: now }] : [],
+      outbound: [
+        intent(cmd.by, locked ? 'pickup_locked' : 'wrong_pickup_code', { code: req.code },
+          `wrong_pickup:${req.code}:${cmd.by}:${now.getTime()}`),
+      ] }
   }
 
   // Idempotent: already collected returns same receipt with no events (I3)
@@ -838,11 +854,13 @@ function decideTick(state: MarketState, now: Date): Decision {
 
   const coordinator = [...state.traders.values()].find(trader => trader.role === 'coordinator')
   if (coordinator) {
-    const window = Math.floor(now.getTime() / (SHORTAGE_WINDOW_MINUTES * 60_000))
     for (const group of shortageSummary(state, now)) {
       const { circleId, item, asked, filled } = group
-      const windowKey = JSON.stringify([circleId, item.name, item.grade, item.unit, window])
-      if (state.shortageAlerts.has(windowKey)) continue
+      // Claude fix (22 Nov): at most one alert per circle and item per 120 minutes, measured from the last alert.
+      const alertKey = shortageAlertKey(circleId, item)
+      const last = state.shortageAlerts.get(alertKey)
+      if (last && now.getTime() - last.getTime() < SHORTAGE_WINDOW_MINUTES * 60_000) continue
+      const windowKey = `${alertKey}@${now.getTime()}`
       events.push({ type: 'shortage_alerted', workspaceId: state.workspaceId, circleId, item, asked, filled, windowKey, at: now })
       outbound.push(intent(coordinator.id, 'shortage_alert', {
         item: item.name,

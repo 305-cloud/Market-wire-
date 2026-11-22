@@ -183,8 +183,9 @@ test('the price range and pickup code are scoped to the exchange participants', 
   const fromBuyer = held.messages.find(message => message.recipient === 'mara' &&
     message.text.includes('Pickup code'))
   const code = /Pickup code (\d{3})/.exec(fromBuyer.text)[1]
-  const sellerMessage = held.messages.find(message => message.text.includes('GIVEN ' + code))
-  assert.equal(sellerMessage.recipient, 'ellis')
+  // Claude fix (22 Nov): only the buyer holds the code; the seller is told to ask for it at handover.
+  assert.ok(held.messages.filter(message => message.recipient !== 'mara').every(message => !message.text.includes(code)))
+  assert.ok(held.messages.some(message => message.recipient === 'ellis' && message.text.includes('ask for their code')))
   assert.ok(held.messages.every(message => message.to !== 'room'))
   const wrong = code === '100' ? '101' : '100'
   assert.equal((await m.send('ellis', 'GIVEN ' + wrong + ' E7')).code, 400)

@@ -4,6 +4,10 @@ export const SHORTAGE_WINDOW_MINUTES = 120
 export const SHORTAGE_MIN_ASKS = 5
 export const SHORTAGE_FILL_RATIO = 0.5
 
+export function shortageAlertKey(circleId: string, item: Item): string {
+  return JSON.stringify([circleId, item.name, item.grade, item.unit])
+}
+
 export function shortageSummary(state: MarketState, now: Date, windowMinutes = SHORTAGE_WINDOW_MINUTES) {
   const start = now.getTime() - windowMinutes * 60_000
   const groups = new Map<string, { circleId: string; item: Item; asked: number; filled: number; open: number }>()

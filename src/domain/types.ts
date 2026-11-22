@@ -70,6 +70,8 @@ export interface CrateRecord {
 export interface HoldRecord {
   id: HoldId
   pickupCode?: string
+  /** Wrong GIVEN codes so far; GIVEN locks at MAX_WRONG_PICKUP_CODES. */
+  wrongCodeAttempts?: number
   requestCode: RequestCode
   offerId: OfferId
   crateId: CrateId
@@ -110,7 +112,8 @@ export interface MarketState {
   nextRequestNumber: number
   /** Completed-trade price history used by priceBand() to compute fair-price hints. */
   priceHistory: PriceRecord[]
-  shortageAlerts: Set<string>
+  /** Last shortage alert time per circle and item (key from shortageAlertKey). */
+  shortageAlerts: Map<string, Date>
 }
 
 export function emptyMarketState(workspaceId: WorkspaceId): MarketState {
@@ -125,12 +128,13 @@ export function emptyMarketState(workspaceId: WorkspaceId): MarketState {
     dispatches: new Map(),
     nextRequestNumber: 1,
     priceHistory: [],
-    shortageAlerts: new Set(),
+    shortageAlerts: new Map(),
   }
 }
 
 export type RejectReason =
   | 'wrong_pickup_code'
+  | 'pickup_locked'
   | 'closed'
   | 'taken'
   | 'not_member'

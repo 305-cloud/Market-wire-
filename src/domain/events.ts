@@ -28,6 +28,16 @@ export type DomainEvent =
   | FallbackSentEvent
   | DemoTradeSeededEvent
   | ShortageAlertedEvent
+  | PickupCodeRejectedEvent
+
+export interface PickupCodeRejectedEvent {
+  type: 'pickup_code_rejected'
+  workspaceId: WorkspaceId
+  holdId: HoldId
+  requestCode: RequestCode
+  by: TraderId
+  at: Date
+}
 
 export interface DemoTradeSeededEvent {
   type: 'demo_trade_seeded'

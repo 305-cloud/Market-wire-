@@ -11,6 +11,7 @@ export type TemplateId =
   | 'offer_accepted_buyer'
   | 'offer_accepted_seller'
   | 'wrong_pickup_code'
+  | 'pickup_locked'
   | 'shortage_alert'
   | 'offer_released_accepted_other'
   | 'offer_released_crate_taken'
@@ -59,8 +60,8 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: held with ${v.sellerAlias} till ${v.cutoff}. Reply DONE when you collect.${v.pickupCode ? ' Pickup code ' + v.pickupCode + '.' : ''}`,
 
   offer_accepted_seller: v =>
-    v.pickupCode
-      ? `${v.code}: ${v.buyerAlias} holds your crate till ${v.cutoff}. Buyer record: ${v.record}. Reply GIVEN ${v.pickupCode} ${v.code} at pickup.`
+    v.askCode
+      ? `${v.code}: ${v.buyerAlias} holds your crate till ${v.cutoff}. Buyer record: ${v.record}. At pickup, ask for their code and reply GIVEN code ${v.code}.`
       :
     `${v.code}: your crate is held for the buyer till ${v.cutoff}. Reply when ready.`,
 
@@ -132,7 +133,9 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
   stale_revision: v =>
     `${v.code}: that offer changed. The current offer is ${v.ref}. Reply ${v.ref} to hold, or wait for more.`,
 
-  wrong_pickup_code: v => `That code doesn't match ${v.code}.`,
+  wrong_pickup_code: v => `That code doesn't match ${v.code}. Ask the buyer to read their pickup code again.`,
+
+  pickup_locked: v => `${v.code}: too many wrong codes. Ask the buyer to reply DONE ${v.code} when they have the crate.`,
 
   shortage_alert: v => `${v.item}, ${v.circle}: ${v.asked} asked, ${v.filled} filled in 2h.`,
 }

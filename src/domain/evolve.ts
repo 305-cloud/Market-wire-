@@ -8,6 +8,7 @@ import type {
   OfferRecord, CrateRecord, HoldRecord, DispatchRecord,
 } from './types.js'
 import type { DomainEvent } from './events.js'
+import { shortageAlertKey } from './shortage.js'
 
 export function evolve(state: MarketState, ev: DomainEvent): MarketState {
   switch (ev.type) {
@@ -15,8 +16,17 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
       return { ...state, priceHistory: [...state.priceHistory, {
         item: ev.item, circleId: ev.circleId, priceKobo: ev.priceKobo, collectedAt: ev.at,
       }] }
-    case 'shortage_alerted':
-      return { ...state, shortageAlerts: new Set([...state.shortageAlerts, ev.windowKey]) }
+    case 'shortage_alerted': {
+      const shortageAlerts = new Map(state.shortageAlerts)
+      shortageAlerts.set(shortageAlertKey(ev.circleId, ev.item), ev.at)
+      return { ...state, shortageAlerts }
+    }
+    case 'pickup_code_rejected': {
+      const holds = new Map(state.holds)
+      const h = holds.get(ev.holdId)
+      if (h) holds.set(ev.holdId, { ...h, wrongCodeAttempts: (h.wrongCodeAttempts ?? 0) + 1 })
+      return { ...state, holds }
+    }
     case 'workspace_created':
       return { ...emptyMarketState(ev.workspaceId) }
 

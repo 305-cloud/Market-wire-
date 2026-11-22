@@ -156,6 +156,15 @@ function flushOutbound(
   }
 }
 
+/**
+ * Claude fix (22 Nov): a rejection is a reply to one specific inbound message, which is already
+ * deduplicated by providerMessageId. Key its outbound on that id so a second wrong message in the
+ * same simulated minute still gets its own reply instead of being suppressed.
+ */
+function replyTo(outbound: OutboundIntent[], providerMessageId: string): OutboundIntent[] {
+  return outbound.map(o => ({ ...o, dedupeKey: `${o.dedupeKey}#${providerMessageId}` }))
+}
+
 /** Persist market state after successful mutations. */
 async function persistMarket(market: Market): Promise<void> {
   if (isPersistenceEnabled()) {
@@ -532,7 +541,7 @@ export async function createServer() {
         // Bug 4: flush rejection outbound regardless of ok/!ok
         if (!d.ok) {
           const state2 = buildState(market)
-          flushOutbound(market, d.outbound, state2)
+          flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
           return res.code(400).send({ status: 'rejected', reason: d.reason })
         }
@@ -567,16 +576,26 @@ export async function createServer() {
             return res.code(400).send({ error: 'ambiguous: ' + opts })
           }
           requestCode = doneCandidates[0]?.code ?? null
+          // Claude fix (22 Nov): if the seller already confirmed, a bare DONE repeats the receipt (I3).
+          if (!requestCode) {
+            const collected = [...state.requests.values()].filter(
+              r => r.requesterId === traderId && r.state === 'collected')
+            requestCode = collected.at(-1)?.code ?? null
+          }
         }
 
-        if (!requestCode) return res.code(400).send({ error: 'no held request' })
+        if (!requestCode) {
+          deliverInbox(market, traderId, 'You have no pickup to confirm. Hold an offer first by replying its number.')
+          await persistMarket(market)
+          return res.code(400).send({ error: 'no held request' })
+        }
 
         const cmd = { kind: 'collect' as const, by: traderId, requestCode }
         const d   = decide(state, cmd, now)
         // Bug 4: flush rejection outbound
         if (!d.ok) {
           const state2 = buildState(market)
-          flushOutbound(market, d.outbound, state2)
+          flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
           return res.code(400).send({ status: 'rejected', reason: d.reason })
         }
@@ -621,7 +640,7 @@ export async function createServer() {
         // Bug 4: flush rejection outbound
         if (!d.ok) {
           const state2 = buildState(market)
-          flushOutbound(market, d.outbound, state2)
+          flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
           await persistMarket(market)
           return res.code(400).send({ status: 'rejected', reason: d.reason })
         }
@@ -656,7 +675,7 @@ export async function createServer() {
       }
 
       // ----------------------------------------------------------------
-      // Seller quote: "E7 4200 Idumota" (format: code amount pickup-area)
+      // Seller quote: "E7 4200 Cedar Lane" (format: code amount pickup-area)
       // ----------------------------------------------------------------
       if (!cmd) {
         const sellerCmd = parseSellerQuote(text.trim(), traderId)
@@ -713,6 +732,19 @@ export async function createServer() {
 
       // Bug 4 / Bug 8: unrecognised text — send one clear inbox reply, return 400
       if (!cmd) {
+        // Claude fix (22 Nov): a repeated hold reply gets a plain answer instead of the generic help text.
+        const replyMatch = /^\d+\.?(?:\s+(E\d+))?[.!?]?$/i.exec(text.trim())
+        if (replyMatch) {
+          const wanted = replyMatch[1]?.toUpperCase()
+          const heldByMe = [...state.requests.values()].filter(r => r.requesterId === traderId && r.state === 'held' &&
+            (!wanted || r.code === wanted))
+          if (heldByMe.length === 1) {
+            const code = heldByMe[0]!.code
+            deliverInbox(market, traderId, `${code}: you already hold this crate. Reply DONE ${code} when you collect.`)
+            await persistMarket(market)
+            return res.code(400).send({ status: 'rejected', reason: 'already_held' })
+          }
+        }
         const helpBody = renderTemplate('help', {
           code: 'E?',
           options: 'NEED qty item BEFORE time, WIDEN, DONE, CANCEL or reply number to hold',
@@ -726,8 +758,10 @@ export async function createServer() {
       const d = decide(state, cmd, now)
       // Bug 4: flush outbound even on rejection
       if (!d.ok) {
+        // Claude fix (22 Nov): keep audit events a rejection records, e.g. wrong pickup codes for the lockout.
+        for (const ev of d.events ?? []) market.events.push(ev)
         const state2 = buildState(market)
-        flushOutbound(market, d.outbound, state2)
+        flushOutbound(market, replyTo(d.outbound, providerMessageId), state2)
         await persistMarket(market)
         return res.code(400).send({ status: 'rejected', reason: d.reason })
       }
