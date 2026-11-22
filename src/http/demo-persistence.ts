@@ -15,7 +15,7 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex')
 }
 
-function reviveEvent(event: DomainEvent): DomainEvent {
+export function reviveEvent(event: DomainEvent): DomainEvent {
   const at = new Date(String(event.at))
   if (event.type === 'request_created') {
     const cutoffAt = new Date(String(event.cutoffAt))

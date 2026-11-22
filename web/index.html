@@ -40,10 +40,60 @@
     </details>
 
     <nav class="jump-links" aria-label="Jump to a desk">
-      <a href="#buyer">Buyer phone</a><a href="#sellers">Seller phone</a><a href="#room">Coordinator</a>
+      <a href="#room">Operations room</a><a href="#buyer">Buyer phone</a><a href="#sellers">Seller phone</a>
     </nav>
 
     <div id="statusBar" role="status" aria-live="polite"></div>
+
+    <section id="room" class="opsroom" aria-labelledby="roomLbl">
+      <div class="opsroom-head">
+        <div>
+          <h2 id="roomLbl">Operations room</h2>
+          <p>Every text crosses the wire. The coordinator sees a request only when its buyer shares it.</p>
+        </div>
+        <div class="lamp" id="lamp" data-state="quiet" role="status" aria-live="polite">
+          <span class="lamp-bulb" aria-hidden="true"></span>
+          <span class="lamp-text"><strong id="lampTitle">No shortage signal</strong><span id="lampDetail">Five unmet asks in two hours lights this lamp.</span></span>
+        </div>
+      </div>
+      <div class="opsroom-body">
+        <figure class="network" aria-labelledby="networkCaption">
+          <svg id="networkMap" viewBox="0 0 560 300" role="img" aria-labelledby="networkCaption">
+            <g class="rings">
+              <circle class="ring" cx="150" cy="146" r="112"></circle>
+              <text class="ring-label" x="150" y="22">Local circle</text>
+              <circle class="ring" cx="458" cy="146" r="78"></circle>
+              <text class="ring-label" x="458" y="56">North circle</text>
+              <path id="bridge" class="bridge" d="M 262 120 Q 321 70 380 120"></path>
+              <text class="bridge-label" x="321" y="74">routed</text>
+            </g>
+            <g id="networkLinks" class="links"></g>
+            <g id="networkPulses" class="pulses"></g>
+            <g id="networkNodes" class="nodes"></g>
+          </svg>
+          <figcaption id="networkCaption">The wire: texts pulse between traders, the wire and the coordinator desk. The arc lights when a request is routed to the North circle.</figcaption>
+        </figure>
+        <div class="telex">
+          <div class="telex-head"><h3>Telex roll</h3><time id="roomClock"></time></div>
+          <div class="room-tray">
+            <p class="empty-room">The wire is quiet.<span>Requests a buyer shares, and shortage signals, print here.</span></p>
+            <div class="log" id="roomLog" role="log" aria-live="polite" aria-label="Telex slips" tabindex="0"></div>
+          </div>
+          <div class="room-actions">
+            <button class="button button-dispatch" id="routeBtn" type="button" disabled>Send to North circle</button>
+            <span id="routeFeedback" role="status"></span>
+          </div>
+        </div>
+      </div>
+      <section class="rules" aria-labelledby="rulesLbl">
+        <div class="rules-head">
+          <h3 id="rulesLbl">Rules on the wire</h3>
+          <p id="rulesSummary" role="status" aria-live="polite">Checking the rules…</p>
+        </div>
+        <ul class="rules-list" id="rulesList"></ul>
+        <p class="rules-note">After every text, the server checks these rules against the full event log and replays it as a restart would. A broken rule turns red.</p>
+      </section>
+    </section>
 
     <div class="desk-grid">
       <section id="buyer" class="panel phone buyer" aria-labelledby="mobileLbl">
@@ -97,24 +147,10 @@
         </div>
       </section>
 
-      <section id="room" class="panel room" aria-labelledby="roomLbl">
-        <div class="panel-header">
-          <div><h2 id="roomLbl">Coordinator room</h2><p>Requests shared by their buyers</p></div>
-          <time id="roomClock"></time>
-        </div>
-        <div class="room-tray">
-          <p class="empty-room">The wire is quiet.<span>Shared requests and shortage alerts appear here.</span></p>
-          <div class="log" id="roomLog" role="log" aria-live="polite" aria-label="Telex dispatches" tabindex="0"></div>
-        </div>
-        <div class="room-actions">
-          <button class="button button-dispatch" id="routeBtn" type="button" disabled>Send to neighboring circle</button>
-          <span id="routeFeedback" role="status"></span>
-        </div>
-      </section>
     </div>
 
     <footer class="desk-footer">
-      <div><p><strong>Inspired by Project Cybersyn</strong></p><p>Chile’s 1972 telex network helped coordinate goods during a truck strike.</p></div>
+      <div><p><strong>Inspired by Project Cybersyn</strong></p><p>Chile’s 1972 telex network helped keep goods moving during a truck strike. Its designers called alarm lamps like the one above algedonic signals. Prices here are simulated credits.</p></div>
       <div class="desk-tools">
         <span id="footerMarket" class="session-reference" hidden>—</span>
         <button class="button button-outline" id="advanceTimeBtn" type="button">Advance 10 min</button>

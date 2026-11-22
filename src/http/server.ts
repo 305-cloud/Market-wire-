@@ -20,7 +20,9 @@ import { evolve } from '../domain/evolve.js'
 import { shortageSummary } from '../domain/shortage.js'
 import { interpret, parseSellerQuote, parseCreateRequest, disambiguateHour } from '../parser/interpret.js'
 import { parseGiven } from '../parser/grammar.js'
+import { readTrader, looksCanonical, tokenize } from '../parser/lexicon.js'
 import { renderTemplate } from '../messages/templates.js'
+import { auditOutbound, rulesReport } from './rules-audit.js'
 import { gsmSeptetCount } from '../messages/templates.js'
 import {
   initPersistence,
@@ -31,6 +33,7 @@ import {
   expireOldSnapshots,
   verifyTokenHash,
   isPersistenceEnabled,
+  reviveEvent,
 } from './demo-persistence.js'
 
 // ---------------------------------------------------------------------------
@@ -145,8 +148,9 @@ function routeMessage(traderId: TraderId): OutboxMessage['to'] {
 function flushOutbound(
   market: Market,
   outbound: OutboundIntent[],
-  _state: MarketState,
+  state: MarketState,
 ): void {
+  auditOutbound(market, state, outbound)
   for (const intent of outbound) {
     if (market.dedupe.has(intent.dedupeKey)) continue
     market.dedupe.add(intent.dedupeKey)
@@ -202,6 +206,9 @@ function fallbackReply(state: MarketState, traderId: TraderId, why: string): str
   if (why === 'past_cutoff') return 'That time has passed. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
   return roleHelp(state, traderId)
 }
+
+/** Unconfirmed reader suggestions per market and trader (in memory; a demo convenience). */
+const pendingSuggestions = new WeakMap<Market, Map<TraderId, string>>()
 
 /** Persist market state after successful mutations. */
 async function persistMarket(market: Market): Promise<void> {
@@ -452,6 +459,19 @@ export async function createServer() {
     },
   )
 
+  // Claude (22 Nov): rules on the wire. Invariants checked on every outbound batch, plus a
+  // fresh check of the current state and a save-and-restore replay (I7) on every report.
+  server.get<{ Params: { id: string } }>(
+    '/api/demo/markets/:id/rules',
+    async (req, res) => {
+      await sweepAndCount()
+      const market = markets.get(req.params.id)
+      if (!market) return res.code(404).send({ error: 'market not found' })
+      if (!await requireBearer(req, market)) return res.code(401).send({ error: 'unauthorized' })
+      return res.send(rulesReport(market, events => buildState({ ...market, events }), reviveEvent))
+    },
+  )
+
   server.get<{ Params: { id: string } }>(
     '/api/demo/markets/:id/events',
     async (req, res) => {
@@ -508,7 +528,8 @@ export async function createServer() {
         }
         return res.code(400).send({ error: 'invalid request body', details: parsed.error.flatten().fieldErrors })
       }
-      const { alias, text, providerMessageId } = parsed.data
+      const { alias, text: rawText, providerMessageId } = parsed.data
+      let text = rawText
 
       // Claude fix (22 Nov): phones join long texts, and a local place name may need non-GSM letters,
       // so inbound is limited by characters (two SMS parts), and an over-long text still gets a reply.
@@ -538,6 +559,28 @@ export async function createServer() {
       const state = buildState(market)
       const now   = market.baseTime
       // Claude fix (22 Nov): traders write "Done.", "done o", "pause"; normalise before matching commands.
+      // Claude (22 Nov): rule-based reader for messy texts ("abeg i need 2 crate egg b4 6").
+      // Sure readings run as the canonical command; unsure ones are offered back for a YES.
+      {
+        const pending = pendingSuggestions.get(market)
+        const words = tokenize(text)
+        const saidYes = words.length > 0 && words.some(w => w.kind === 'yesno' && w.canonical === 'YES') &&
+          words.every(w => (w.kind === 'yesno' && w.canonical === 'YES') || w.kind === 'filler' || w.kind === 'connector')
+        const suggestion = pending?.get(traderId)
+        pending?.delete(traderId)
+        if (saidYes && suggestion) text = suggestion
+        else if (!looksCanonical(text)) {
+          const reading = readTrader(text)
+          if (reading?.sure) text = reading.text
+          else if (reading) {
+            if (!pendingSuggestions.has(market)) pendingSuggestions.set(market, new Map())
+            pendingSuggestions.get(market)!.set(traderId, reading.text)
+            deliverInbox(market, traderId, `Did you mean: ${reading.text}? Reply YES to send it.`)
+            await persistMarket(market)
+            return res.code(400).send({ status: 'rejected', reason: 'did_you_mean', suggestion: reading.text })
+          }
+        }
+      }
       let upper = text.trim().toUpperCase().replace(/[.!?]+$/, '').trim()
       if (upper === 'DONE O') upper = 'DONE'
       {

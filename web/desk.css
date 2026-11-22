@@ -121,7 +121,7 @@ h1, h2, p, dl, dd { margin: 0; }
 
 .desk-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.12fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: .9rem;
   align-items: stretch;
 }
@@ -227,48 +227,6 @@ h1, h2, p, dl, dd { margin: 0; }
 .button-primary { color: var(--sheet); background: var(--forest); }
 .button-primary:hover { background: #31503d; }
 
-.room { color: var(--room-text); background: #edf1ed; }
-.room .panel-header { background: var(--sheet); }
-.room .panel-header p, .room time, #routeFeedback { color: var(--muted); }
-.room-tray { flex: 1; display: flex; flex-direction: column; padding: .8rem; }
-.room .log { flex: 1; min-height: 13.7rem; padding: .55rem; scrollbar-color: var(--forest-line) transparent; }
-.room .log:empty { min-height: 0; padding: 0; }
-.room .log:empty::before { content: none; }
-.empty-room {
-  display: grid;
-  align-content: center;
-  flex: 1;
-  min-height: 12rem;
-  padding: 1rem;
-  border: 1px dashed var(--forest-line);
-  border-radius: .32rem;
-  background: var(--sheet);
-  font-size: 1rem;
-  font-weight: 700;
-}
-.empty-room span { display: block; margin-top: .35rem; font-size: .84rem; font-weight: 400; color: var(--muted); }
-.room-tray:has(.log:not(:empty)) .empty-room { display: none; }
-.msg-room {
-  position: relative;
-  padding: .77rem .85rem .9rem;
-  border-radius: 0;
-  background: var(--sheet);
-  color: var(--ink);
-  border: 1px solid var(--forest-line);
-  border-radius: .3rem;
-}
-.msg-room .msg-from { color: #4f5845; }
-.room-actions {
-  display: grid;
-  gap: .35rem;
-  padding: .9rem 1rem 1rem;
-  border-top: 1px solid var(--line);
-}
-.button-dispatch { background: var(--forest); color: var(--sheet); }
-.button-dispatch:not(:disabled):hover { background: var(--forest-deep); }
-.button-dispatch:disabled { background: var(--wash); color: var(--muted); border-color: var(--line); }
-#routeFeedback { min-height: 1.15rem; font-size: .75rem; }
-
 .desk-footer {
   display: flex;
   justify-content: space-between;
@@ -286,11 +244,7 @@ h1, h2, p, dl, dd { margin: 0; }
 
 @media (max-width: 68rem) {
   .masthead-inner, .workspace { width: min(100% - 2rem, 90rem); }
-  .desk-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .room { grid-column: 1 / -1; }
-  .room .log { min-height: 7rem; }
-  .room .log:empty { min-height: 0; }
-  .empty-room { min-height: 7rem; }
+  .opsroom-body { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 43rem) {
@@ -315,3 +269,187 @@ h1, h2, p, dl, dd { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* ------------------------------------------------------------------
+   Operations room (22 Nov): a nod to Cybersyn's 1972 opsroom.
+   Walnut wall, teleprinter paper, one alarm lamp. The phones stay quiet.
+   ------------------------------------------------------------------ */
+.opsroom {
+  --walnut: #2a2019;
+  --walnut-2: #3a2c22;
+  --walnut-line: #5b4636;
+  --paper-telex: #eeecd6;
+  --paper-edge: #dcd9bd;
+  --type-ink: #1d1a14;
+  --lamp: #d42a1f;
+  --lamp-glow: rgb(212 42 31 / .35);
+  --wire: #c9b9a6;
+  margin-bottom: 1rem;
+  border-radius: .65rem;
+  color: #f1e9de;
+  background: var(--walnut);
+  overflow: clip;
+}
+.opsroom-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem 2rem;
+  flex-wrap: wrap;
+  padding: 1.05rem 1.25rem .9rem;
+  border-bottom: 1px solid var(--walnut-line);
+}
+.opsroom-head h2 { font-size: 1.35rem; letter-spacing: -.01em; }
+.opsroom-head p { margin-top: .2rem; max-width: 62ch; color: #cdbfae; font-size: .85rem; }
+
+.lamp { display: flex; align-items: center; gap: .7rem; min-width: 15rem; }
+.lamp-bulb {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #6b3a33, #3d211d 70%);
+  box-shadow: inset 0 0 0 2px #1a120d;
+}
+.lamp-text { display: grid; line-height: 1.25; font-size: .78rem; color: #cdbfae; }
+.lamp-text strong { color: #f1e9de; font-size: .88rem; }
+.lamp[data-state="alarm"] .lamp-bulb {
+  background: radial-gradient(circle at 35% 35%, #ff8a70, var(--lamp) 60%);
+  box-shadow: 0 0 0 4px var(--lamp-glow), 0 0 22px 6px var(--lamp-glow);
+  animation: lamp-breathe 1.6s ease-in-out infinite;
+}
+.lamp[data-state="alarm"] .lamp-text strong { color: #ffb4a6; }
+@keyframes lamp-breathe { 50% { box-shadow: 0 0 0 6px var(--lamp-glow), 0 0 30px 10px var(--lamp-glow); } }
+
+.opsroom-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 0;
+}
+.network { margin: 0; padding: .9rem 1rem 1rem 1.1rem; border-right: 1px solid var(--walnut-line); }
+.network svg { display: block; width: 100%; height: auto; max-height: 21rem; }
+.network figcaption { margin-top: .4rem; color: #b5a593; font-size: .74rem; max-width: 60ch; }
+.ring { fill: rgb(255 255 255 / .025); stroke: var(--walnut-line); stroke-width: 1.5; stroke-dasharray: 3 5; }
+.ring-label, .bridge-label { fill: #b5a593; font: 600 11px/1 system-ui, sans-serif; text-anchor: middle; }
+.bridge { fill: none; stroke: var(--walnut-line); stroke-width: 2; stroke-dasharray: 2 6; transition: stroke .4s; }
+.bridge-label { opacity: 0; transition: opacity .4s; }
+.network[data-routed="yes"] .bridge { stroke: var(--lamp); stroke-dasharray: none; stroke-width: 3; }
+.network[data-routed="yes"] .bridge-label { opacity: 1; fill: #ffb4a6; }
+.links line { stroke: var(--walnut-line); stroke-width: 1.25; }
+.node circle { fill: var(--walnut-2); stroke: var(--wire); stroke-width: 1.5; }
+.node text { fill: #efe4d6; font: 600 11.5px/1 system-ui, sans-serif; text-anchor: middle; }
+.node .state { fill: #b5a593; font-weight: 500; font-size: 10px; }
+.node.hub circle { fill: var(--paper-telex); stroke: none; }
+.node.hub text { fill: var(--type-ink); font-family: "Courier New", Courier, monospace; font-weight: 700; letter-spacing: .08em; }
+.node.desk circle { stroke-dasharray: 4 3; }
+.node[data-state="asking"] circle { stroke: #f0b429; stroke-width: 2.5; }
+.node[data-state="holding"] circle { stroke: #8fd18a; stroke-width: 2.5; }
+.node[data-state="invited"] circle { stroke: var(--lamp); stroke-width: 2.5; }
+.pulse { fill: var(--paper-telex); }
+.pulse.out { fill: #f0b429; }
+.pulse.signal { fill: var(--lamp); }
+
+.telex { display: flex; flex-direction: column; min-width: 0; background: var(--walnut-2); }
+.telex-head { display: flex; justify-content: space-between; align-items: baseline; padding: .8rem 1.1rem .2rem; }
+.telex-head h3 { margin: 0; font-size: .95rem; }
+.telex-head time { color: #b5a593; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.opsroom .room-tray { flex: 1; display: flex; flex-direction: column; padding: .55rem 1.1rem .8rem; }
+.opsroom .log { flex: 1; min-height: 13rem; max-height: 19rem; padding: .2rem; scrollbar-color: var(--walnut-line) transparent; }
+.opsroom .log:empty { min-height: 0; padding: 0; }
+.opsroom .log:empty::before { content: none; }
+.opsroom .empty-room {
+  display: grid;
+  align-content: center;
+  flex: 1;
+  min-height: 12rem;
+  padding: 1rem;
+  border: 1px dashed var(--walnut-line);
+  border-radius: .3rem;
+  color: #efe4d6;
+  font-size: .95rem;
+  font-weight: 700;
+}
+.opsroom .empty-room span { display: block; margin-top: .3rem; color: #b5a593; font-size: .82rem; font-weight: 400; }
+.room-tray:has(.log:not(:empty)) .empty-room { display: none; }
+
+/* Telex slips: teleprinter paper with sprocket holes, all capitals as the machines printed. */
+.slip {
+  position: relative;
+  margin: 0 0 .7rem;
+  padding: .7rem .85rem .75rem 1.7rem;
+  color: var(--type-ink);
+  background:
+    radial-gradient(circle at .7rem 50%, var(--walnut-2) .22rem, transparent .24rem) 0 0 / 1.4rem .9rem repeat-y,
+    var(--paper-telex);
+  border-bottom: 2px dashed var(--paper-edge);
+  font: 700 .82rem/1.5 "Courier New", Courier, monospace;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  transition: opacity .6s, filter .6s;
+}
+.slip:last-child { margin-bottom: 0; }
+.slip-meta { display: block; margin-bottom: .25rem; color: #5e5842; font-size: .74rem; font-weight: 700; letter-spacing: .06em; }
+.slip.signal { background-color: #f6dcd6; }
+.slip.signal .slip-meta { color: #9b2a1f; }
+.slip.ghost { opacity: .42; filter: grayscale(1); }
+.slip.ghost .slip-meta::after { content: " · request closed"; }
+.slip .stamp {
+  position: absolute;
+  right: .7rem;
+  top: .55rem;
+  padding: .05rem .4rem;
+  border: 2px solid var(--lamp);
+  border-radius: .2rem;
+  color: var(--lamp);
+  font-size: .72rem;
+  letter-spacing: .1em;
+  transform: rotate(-7deg);
+  opacity: .85;
+}
+.slip .stamp.filled { border-color: #3f7a3a; color: #3f7a3a; }
+.slip .caret { display: inline-block; width: .55em; background: var(--type-ink); animation: caret .8s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+
+.opsroom .room-actions { display: grid; gap: .35rem; padding: .7rem 1.1rem 1rem; border-top: 1px solid var(--walnut-line); }
+.button-dispatch { background: var(--lamp, #d42a1f); color: #fff; }
+.button-dispatch:not(:disabled):hover { background: #b3221a; }
+.button-dispatch:disabled { background: transparent; color: #b5a593; border-color: var(--walnut-line); }
+#routeFeedback { min-height: 1.15rem; font-size: .75rem; color: #cdbfae; }
+
+@media (max-width: 43rem) {
+  .opsroom-head { padding: .9rem 1rem .8rem; }
+  .network { padding: .7rem .6rem .8rem; border-right: 0; border-bottom: 1px solid var(--walnut-line); }
+  .network svg { max-height: 14rem; }
+  .opsroom .room-tray { padding-inline: .8rem; }
+  .opsroom .log { min-height: 9rem; }
+  .opsroom .empty-room { min-height: 7rem; }
+  .lamp { min-width: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse { display: none; }
+}
+/* Stack the map above the telex roll below desktop widths (must follow the .opsroom-body rule). */
+@media (max-width: 68rem) {
+  .opsroom-body { grid-template-columns: minmax(0, 1fr); }
+  .network { border-right: 0; border-bottom: 1px solid var(--walnut-line); }
+  .network svg { max-height: 17rem; margin-inline: auto; }
+}
+.slip:has(.stamp) .slip-meta { padding-right: 5.5rem; }
+
+/* Rules on the wire (22 Nov): the invariants, re-checked after every text. Jewel lamps, like a console. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.opsroom .rules { --ok: #8fc79a; padding: .85rem 1.1rem 1rem; border-top: 1px solid var(--walnut-line); }
+.rules-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .2rem 1rem; }
+.rules-head h3 { font-size: .95rem; color: #f1e9de; }
+.rules-head p { font-size: .78rem; color: #cdbfae; font-variant-numeric: tabular-nums; }
+.rules-head p[data-state="broken"] { color: #ffb4a6; font-weight: 600; }
+.rules-list { list-style: none; margin: .6rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr)); gap: .3rem 1.2rem; }
+.rule { display: flex; align-items: center; gap: .55rem; font-size: .8rem; color: #e4d9cb; line-height: 1.3; }
+.jewel { flex: none; width: .62rem; height: .62rem; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #d6f2da, var(--ok) 65%); box-shadow: 0 0 0 2px #1a120d, 0 0 8px rgb(143 199 154 / .35); }
+.rule[data-state="broken"] { color: #ffb4a6; font-weight: 600; }
+.rule[data-state="broken"] .jewel { background: radial-gradient(circle at 35% 35%, #ff8a70, var(--lamp) 60%); box-shadow: 0 0 0 2px #1a120d, 0 0 12px 3px var(--lamp-glow); animation: lamp-breathe 1.6s ease-in-out infinite; }
+.rules-note { margin-top: .6rem; font-size: .72rem; color: #a8977f; max-width: 75ch; }
+@media (max-width: 43rem) { .opsroom .rules { padding-inline: .8rem; } .rules-list { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .rule[data-state="broken"] .jewel { animation: none; } }

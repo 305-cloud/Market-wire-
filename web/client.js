@@ -101,6 +101,157 @@
     log.scrollTop = log.scrollHeight;
   }
 
+  // ---- Operations room (22 Nov): telex roll, network map and the alarm lamp ----
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SVG = 'http://www.w3.org/2000/svg';
+  const NODES = {
+    mara: { x: 104, y: 96, label: 'Mara' },
+    ellis: { x: 200, y: 112, label: 'Ellis' },
+    jules: { x: 134, y: 206, label: 'Jules' },
+    rowan: { x: 458, y: 140, label: 'Rowan' },
+    wire: { x: 321, y: 166, label: 'WIRE', hub: true },
+    coordinator: { x: 321, y: 262, label: 'Coordinator desk', desk: true },
+  };
+  let seenMessages = 0;
+  let typedSlips = 0;
+  let typing;
+
+  function svg(tag, attrs, parent) {
+    const el = document.createElementNS(SVG, tag);
+    for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+    if (parent) parent.append(el);
+    return el;
+  }
+
+  function buildNetwork() {
+    const links = byId('networkLinks');
+    const nodes = byId('networkNodes');
+    for (const [key, node] of Object.entries(NODES)) {
+      if (key !== 'wire') svg('line', { x1: node.x, y1: node.y, x2: NODES.wire.x, y2: NODES.wire.y }, links);
+      const group = svg('g', { class: 'node' + (node.hub ? ' hub' : '') + (node.desk ? ' desk' : ''), id: 'node-' + key }, nodes);
+      svg('circle', { cx: node.x, cy: node.y, r: node.hub ? 21 : 13 }, group);
+      const label = svg('text', { x: node.x, y: node.hub ? node.y + 4 : node.y + 29 }, group);
+      label.textContent = node.label;
+      if (!node.hub) {
+        const state = svg('text', { class: 'state', x: node.x, y: node.y + 42 }, group);
+        state.textContent = '';
+      }
+    }
+  }
+
+  function pulse(from, to, kind, delay) {
+    if (reduceMotion || !NODES[from] || !NODES[to]) return;
+    const dot = svg('circle', { class: 'pulse ' + kind, r: 5, cx: NODES[from].x, cy: NODES[from].y });
+    const move = svg('animateMotion', {
+      dur: '0.9s', begin: 'indefinite', fill: 'freeze',
+      path: `M 0 0 L ${NODES[to].x - NODES[from].x} ${NODES[to].y - NODES[from].y}`,
+    }, dot);
+    byId('networkPulses').append(dot);
+    setTimeout(() => { try { move.beginElement(); } catch {} }, delay);
+    setTimeout(() => dot.remove(), delay + 1100);
+  }
+
+  function renderNetwork(messages, requests) {
+    for (const message of messages.slice(seenMessages)) {
+      const index = messages.indexOf(message) - seenMessages;
+      const signal = /\d+ asked, \d+ filled/.test(message.text);
+      if (message.sent) pulse(message.from, 'wire', 'in', index * 160);
+      else pulse('wire', message.recipient, signal ? 'signal' : 'out', index * 160 + 450);
+    }
+    seenMessages = messages.length;
+    const live = request => ['open_local', 'widened', 'held'].includes(request.state);
+    for (const key of ['mara', 'ellis', 'jules', 'rowan']) {
+      const mine = requests.filter(request => request.requester === key && live(request));
+      const held = mine.find(request => request.state === 'held');
+      const invited = requests.find(request => request.routed && live(request) && request.invitedSellers.includes(key));
+      const state = held ? 'holding' : mine.length ? 'asking' : invited ? 'invited' : '';
+      const group = byId('node-' + key);
+      group.dataset.state = state;
+      group.querySelector('.state').textContent =
+        held ? 'holding ' + held.code : mine.length ? 'asking ' + mine.at(-1).code : invited ? 'invited to ' + invited.code : '';
+    }
+    byId('networkMap').closest('.network').dataset.routed = requests.some(request => request.routed && live(request)) ? 'yes' : 'no';
+  }
+
+  function renderTelex(messages, requests) {
+    const log = byId('roomLog');
+    const room = messages.filter(message => message.to === 'room');
+    const byCode = new Map(requests.map(request => [request.code, request]));
+    clearInterval(typing);
+    const slips = room.map((message, index) => {
+      const slip = document.createElement('div');
+      const signal = /\d+ asked, \d+ filled/.test(message.text);
+      const code = /^(E\d+)\b/.exec(message.text)?.[1];
+      const request = code && byCode.get(code);
+      slip.className = 'slip' + (signal ? ' signal' : '') +
+        (request && ['expired', 'cancelled'].includes(request.state) ? ' ghost' : '');
+      const meta = document.createElement('span');
+      meta.className = 'slip-meta';
+      meta.textContent = message.sent ? 'Sent from the desk' : signal ? 'Shortage signal' : code ? 'Request ' + code + ' shared by its buyer' : 'Market Wire';
+      slip.append(meta);
+      if (request?.state === 'collected') slip.append(Object.assign(document.createElement('span'), { className: 'stamp filled', textContent: 'Filled' }));
+      else if (request?.routed) slip.append(Object.assign(document.createElement('span'), { className: 'stamp', textContent: 'Routed' }));
+      const body = document.createElement('span');
+      body.textContent = message.text;
+      slip.append(body);
+      if (!reduceMotion && index >= typedSlips && index === room.length - 1) {
+        const full = message.text;
+        let shown = 0;
+        body.textContent = '';
+        const caret = Object.assign(document.createElement('span'), { className: 'caret', textContent: ' ' });
+        slip.append(caret);
+        typing = setInterval(() => {
+          shown += 2;
+          body.textContent = full.slice(0, shown);
+          if (shown >= full.length) { clearInterval(typing); caret.remove(); }
+        }, 22);
+      }
+      return slip;
+    });
+    typedSlips = room.length;
+    log.replaceChildren(...slips);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function renderLamp(shortages) {
+    const lamp = byId('lamp');
+    const top = shortages?.[0];
+    lamp.dataset.state = top ? 'alarm' : 'quiet';
+    byId('lampTitle').textContent = top ? 'Shortage signal: ' + top.item.name : 'No shortage signal';
+    byId('lampDetail').textContent = top
+      ? (/north/i.test(top.circleId) ? 'North' : 'Local') + ' circle, ' + top.asked + ' asked, ' + top.filled + ' filled in 2 hours.'
+      : 'Five unmet asks in two hours lights this lamp.';
+  }
+
+  let rulesSignature = '';
+  function renderRules(report) {
+    if (!report) return;
+    const signature = JSON.stringify(report.rules);
+    const holding = report.rules.filter(rule => rule.holding).length;
+    byId('rulesSummary').textContent = (holding === report.rules.length
+      ? 'All ' + holding + ' rules holding'
+      : report.broken + ' rule' + (report.broken === 1 ? '' : 's') + ' broken') +
+      ', checked ' + report.checks + ' times over ' + report.events + ' events.';
+    byId('rulesSummary').dataset.state = report.broken ? 'broken' : 'holding';
+    if (signature === rulesSignature) return;
+    rulesSignature = signature;
+    byId('rulesList').replaceChildren(...report.rules.map(rule => {
+      const item = document.createElement('li');
+      item.className = 'rule';
+      item.dataset.state = rule.holding ? 'holding' : 'broken';
+      const jewel = document.createElement('span');
+      jewel.className = 'jewel';
+      jewel.setAttribute('aria-hidden', 'true');
+      const text = document.createElement('span');
+      text.textContent = rule.text;
+      const state = document.createElement('span');
+      state.className = 'visually-hidden';
+      state.textContent = rule.holding ? ' (holding)' : ' (broken)';
+      item.append(jewel, text, state);
+      return item;
+    }));
+  }
+
   function shortcut(button, value, label) {
     button.dataset.text = value;
     button.disabled = !value;
@@ -142,8 +293,11 @@
       renderLog('mobileLog', messages.filter(message => message.to === 'mobile'), 'No texts yet.');
       renderLog('desktopLog', messages.filter(message =>
         message.to === 'desktop' && (message.recipient ?? message.from) === seller), 'No texts for this seller yet.');
-      renderLog('roomLog', messages.filter(message => message.to === 'room'));
+      renderTelex(messages, requests);
+      renderNetwork(messages, requests);
     }
+    renderLamp(snapshot.shortages);
+    renderRules(snapshot.rules);
 
     const newActions = JSON.stringify([seller, available, requests]);
     if (newActions === actionSignature) return;
@@ -175,6 +329,12 @@
     if (!active) return;
     const data = await request('/' + active.marketId + '/state', undefined, active);
     if (active !== session || (snapshot && data.messages.length < snapshot.messages.length)) return;
+    try {
+      data.shortages = (await request('/' + active.marketId + '/shortages', undefined, active)).shortages;
+    } catch { data.shortages = snapshot?.shortages ?? []; }
+    try {
+      data.rules = await request('/' + active.marketId + '/rules', undefined, active);
+    } catch { data.rules = snapshot?.rules; }
     snapshot = data;
     render();
   }
@@ -303,8 +463,9 @@
     render();
   });
   byId('routeBtn').addEventListener('click', () => mutate('/coordinator/route',
-    { requestCode: byId('routeBtn').dataset.code }, byId('routeFeedback'), 'Sent to the neighboring circle'));
+    { requestCode: byId('routeBtn').dataset.code }, byId('routeFeedback'), 'Sent to the North circle'));
   byId('advanceTimeBtn').addEventListener('click', () => mutate('/clock', { minutes: 10 }, byId('statusBar')));
+  buildNetwork();
   bindPhone('mobile', () => 'mara');
   bindPhone('desktop', () => byId('senderSelect').value);
   remember(storedSession());

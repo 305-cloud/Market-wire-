@@ -21,7 +21,8 @@ async function market() {
   const clock = async minutes => server.inject({ method: 'POST', url: `/api/demo/markets/${marketId}/clock`, headers: auth, payload: { minutes } })
   const inbox = async who => (await state()).messages.filter(m => m.recipient === who)
   const e7 = async () => (await state()).requests.find(r => r.code === 'E7').state
-  return { send, state, clock, inbox, e7 }
+  const rules = async (withToken = true) => server.inject({ method: 'GET', url: `/api/demo/markets/${marketId}/rules`, headers: withToken ? auth : {} })
+  return { send, state, clock, inbox, e7, rules }
 }
 async function held() {
   const m = await market()
@@ -267,4 +268,57 @@ test('STRESS: requests the buyer cancelled do not count towards a shortage alert
   for (const [who, code] of [['jules', 'E8'], ['ellis', 'E9'], ['jules', 'E10'], ['ellis', 'E11']]) await m.send(who, `CANCEL ${code}`)
   await m.clock(10)
   assert.equal((await m.inbox('coordinator')).filter(x => /asked/.test(x.text)).length, 0)
+})
+
+// Word reader (lexicon) and rules on the wire, 22 Nov.
+const { rulesReport } = await import('../dist/src/http/rules-audit.js')
+const { emptyMarketState } = await import('../dist/src/domain/types.js')
+
+test('READER: messy texts that are clear run as the command', async () => {
+  const { m } = await held()
+  assert.equal((await m.send('mara', 'i don collect')).code, 200)
+  assert.equal(await m.e7(), 'collected')
+  assert.equal((await m.send('mara', 'abeg i need 1 crate egg b4 6')).code, 200)
+  assert.equal((await m.state()).requests.at(-1).item, 'eggs')
+})
+
+test('READER: an unsure text is offered back, and YES sends it; anything else drops it', async () => {
+  const m = await market()
+  const r = await m.send('jules', 'any eggs b4 5')
+  assert.equal(r.body.reason, 'did_you_mean')
+  assert.match((await m.inbox('jules')).at(-1).text, /Did you mean: NEED 1 CRATE EGGS BEFORE 5\? Reply YES/)
+  const before = (await m.state()).requests.length
+  assert.equal((await m.send('jules', 'yes')).code, 200)
+  assert.equal((await m.state()).requests.length, before + 1)
+  await m.send('ellis', 'any eggs b4 5')
+  await m.send('ellis', 'hello')
+  assert.notEqual((await m.send('ellis', 'YES')).code, 200, 'a stale suggestion is not sent')
+})
+
+test('READER: canonical commands and seller quotes are left alone', async () => {
+  const m = await market()
+  assert.equal((await m.send('ellis', 'E7 4200 Cedar Lane')).code, 200)
+  assert.match((await m.inbox('mara')).at(-1).text, /4,200 credits/)
+  assert.equal((await m.send('jules', 'NEED 1 CRATE MILK BEFORE 6PM')).code, 200)
+})
+
+test('RULES: every rule holds through a full flow and the report needs the token', async () => {
+  const { m, code } = await held()
+  await m.send('ellis', `GIVEN ${code} E7`)
+  const s = await m.state()
+  assert.equal(s.requests[0].state, 'collected')
+  const report = (await m.rules()).json()
+  assert.equal(report.broken, 0)
+  assert.equal(report.rules.length, 9)
+  assert.ok(report.rules.every(r => r.holding))
+  assert.ok(report.checks >= 4 && report.events > 10)
+  assert.equal((await m.rules(false)).statusCode, 401)
+})
+
+test('RULES: a replay that differs after restore shows I7 broken', () => {
+  let n = 0
+  const report = rulesReport({ events: [] }, () => ({ ...emptyMarketState('x'), nextRequestNumber: n++ }), e => e)
+  assert.equal(report.broken, 1)
+  assert.equal(report.rules.find(r => r.id === 'I7').holding, false)
+  assert.ok(report.rules.filter(r => r.id !== 'I7').every(r => r.holding))
 })
