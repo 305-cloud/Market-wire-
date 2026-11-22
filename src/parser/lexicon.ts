@@ -93,6 +93,10 @@ const SIMPLE = new Set(['DONE', 'CANCEL', 'WIDEN', 'STOP', 'START', 'PAUSE', 'RE
 export function readTrader(text: string): Reading | null {
   const tokens = tokenize(text)
   if (!tokens.length) return null
+  // Stress round 3: the reader can't place 'tomorrow' yet, so it must not guess today.
+  if (/\b(tomorrow|tmrw|tmr|tomoro|tmoro|2moro|2mrw)\b/i.test(text)) return null
+  // A flood of guessed words is noise, not a command.
+  if (tokens.filter(t => !t.sure && t.kind !== 'unknown').length > 2) return null
   const commands = tokens.filter(t => t.kind === 'command').map(t => t.canonical.split(' ')[0]!)
   const code = tokens.find(t => t.kind === 'code')?.canonical
   const unknown = tokens.filter(t => t.kind === 'unknown').length
@@ -134,6 +138,8 @@ export function readTrader(text: string): Reading | null {
     }
     if (!time) return null
     if (unknown > 2) sure = false
+    // Stress round 3: a question, an offer ('i have / i get / bring') or another command means ask first.
+    if (commands.some(c => c !== 'NEED') || /\?|\b(how much|how many|have|get|got|bring|sell|selling|dey sell)\b/i.test(text)) sure = false
     return { text: `NEED ${quantity} CRATE ${item} ${time}`, sure }
   }
 

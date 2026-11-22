@@ -184,3 +184,38 @@ Author: Claude. A first-use agent tested the new build as a busy trader typing q
 - Vitest 95/95.
 - Repros 8/8.
 - API smoke and MCP smoke passed.
+
+## Stress review, round 3, 22 November
+
+Author: Claude. A stress agent ran about 15,800 random texts (360 sequences, 3 seeds), 3,500 messy texts aimed at the YES rule, and about 200 targeted attacks.
+
+**What held up:**
+- No 500 errors.
+- No silent replies.
+- No false alarms from the rules panel.
+- STATUS never showed a pickup code to a seller or the coordinator.
+
+**Fixed:**
+- **A command word followed by other words ran the bare command without a YES.** For example, "done waiting, seller never came" collected a held deal. Only polite words may now follow a command ("done o", "CANCEL pls E8"), and any code the trader names is kept.
+- **"CANCEL pls E99" cancelled a different request.**
+- **A NEED reading ran directly even when the text was a question, an offer or another command.** For example:
+  - "how much for 1 crate eggs before 5pm";
+  - "i have 1 crate eggs…";
+  - "cancel the 1 crate eggs i need…".
+  
+  These now ask first.
+- **YES and suggestions:**
+  - "ok thanks" no longer counts as YES.
+  - Suggestions lapse after 15 market minutes.
+  - Reset clears suggestions and the rules audit.
+  - A flood of guessed words is ignored.
+  - "tomorrow" is no longer misread as today.
+- **WIDEN on a held request** now explains that there is nothing to widen. "E7 done" now works.
+- **Strangers learn nothing about a request.** An unknown code and a code not sent to you get the same reply, and only an invited seller hears that a request was cancelled.
+- **Milk wording:** the coordinator notice now says "bottle", and the seller hold notice says "holds your offer".
+
+**Checks:**
+- Node suites 65/65 (5 new tests).
+- Vitest 95/95.
+- Repros 8/8.
+- API smoke and MCP smoke passed.

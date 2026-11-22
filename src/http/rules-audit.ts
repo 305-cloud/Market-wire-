@@ -29,6 +29,9 @@ function auditFor(market: object): Audit {
   return audit
 }
 
+/** Forget the audit when a market is reset. */
+export function resetAudit(market: object): void { audits.delete(market) }
+
 /** Check one batch of outbound texts against the state they were decided on. */
 export function auditOutbound(market: object, state: MarketState, outbound: OutboundIntent[]): void {
   if (!outbound.length) return

@@ -252,7 +252,7 @@ test('STRESS: the losing seller is told plainly; no stranger learns a request st
   await m.send('mara', '2')
   assert.match((await m.inbox('ellis')).at(-1).text, /the buyer chose another offer\. Your crate is free\./)
   await m.send('rowan', 'E7 4300 North gate')
-  assert.match((await m.inbox('rowan')).at(-1).text, /not sent to you/)
+  assert.match((await m.inbox('rowan')).at(-1).text, /not one you can act on/)
 })
 
 test('STRESS: no "no crate held" warning one minute after a request is made', async () => {
@@ -370,4 +370,58 @@ test('ROUND2: 4.5k prices, milk units for sellers, routed notice, seller DONE an
   await m.send('ellis', 'GIVEN 123 E7')
   assert.match((await m.inbox('ellis')).at(-1).text, /E7: this request has been cancelled/)
   assert.ok(s)
+})
+
+// Stress round 3 (22 Nov): the YES rule, named codes, NEED readings, reset, WIDEN on hold, leaks.
+test('STRESS3: a text starting with a command word never runs without YES', async () => {
+  const { m } = await held()
+  for (const t of ['done waiting, seller never came', 'cancel that, i still need it'])
+    assert.notEqual((await m.send('mara', t)).code, 200, t)
+  assert.equal(await m.e7(), 'held')
+  await m.send('ellis', 'stop msgs dey sell eggs')
+  assert.ok(!(await m.inbox('ellis')).some(x => /opted out|paused/i.test(x.text)))
+})
+
+test('STRESS3: a filler word before a code keeps the named code', async () => {
+  const m = await market()
+  assert.notEqual((await m.send('mara', 'CANCEL pls E99')).code, 200)
+  assert.equal(await m.e7(), 'open_local')
+  assert.equal((await m.send('mara', 'CANCEL please E7')).code, 200)
+  assert.equal(await m.e7(), 'cancelled')
+})
+
+test('STRESS3: NEED readings with a question, an offer or another command ask first', async () => {
+  const m = await market()
+  const before = (await m.state()).requests.length
+  for (const [who, t] of [['mara', 'cancel the 1 crate eggs i need before 5pm'], ['mara', 'how much for 1 crate eggs before 5pm'], ['ellis', 'i have 1 crate eggs before 5pm']])
+    assert.notEqual((await m.send(who, t)).code, 200, t)
+  assert.equal((await m.state()).requests.length, before)
+})
+
+test('STRESS3: "ok thanks" is not YES; suggestions lapse; WIDEN on a held request says why; "E7 done" works', async () => {
+  const { m } = await held()
+  await m.send('mara', 'nevermind')
+  assert.notEqual((await m.send('mara', 'ok thanks')).code, 200)
+  assert.equal(await m.e7(), 'held')
+  await m.send('mara', 'nevermind')
+  await m.clock(20)
+  assert.notEqual((await m.send('mara', 'yes')).code, 200)
+  assert.equal(await m.e7(), 'held')
+  await m.send('mara', 'WIDEN E7')
+  assert.match((await m.inbox('mara')).at(-1).text, /E7: you already hold a crate, so there is nothing to widen/)
+  assert.equal((await m.send('mara', 'e7 done')).code, 200)
+  assert.equal(await m.e7(), 'collected')
+})
+
+test('STRESS3: strangers learn nothing; unknown and uninvited codes get the same reply', async () => {
+  const m = await market()
+  await m.send('mara', 'CANCEL E7')
+  await m.send('rowan', 'GIVEN 123 E7')
+  const a = (await m.inbox('rowan')).at(-1).text
+  await m.send('rowan', 'E7 4000 North Arcade')
+  const b = (await m.inbox('rowan')).at(-1).text
+  await m.send('rowan', 'E99 4000 North Arcade')
+  const c = (await m.inbox('rowan')).at(-1).text
+  assert.ok(!/cancel/i.test(a), a)
+  assert.equal(b, c)
 })

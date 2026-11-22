@@ -63,7 +63,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
 
   offer_accepted_seller: v =>
     v.askCode
-      ? `${v.code}: ${v.buyerAlias} holds your crate till ${v.cutoff}. Buyer record: ${v.record}. At pickup, ask for their 3-digit code and reply GIVEN, the code, then ${v.code}.`
+      ? `${v.code}: ${v.buyerAlias} holds your offer till ${v.cutoff}. Buyer record: ${v.record}. At pickup, ask for their 3-digit code and reply GIVEN, the code, then ${v.code}.`
       :
     `${v.code}: your crate is held for the buyer till ${v.cutoff}. Reply when ready.`,
 
@@ -86,7 +86,7 @@ const templates: Record<TemplateId, (v: TemplateVars) => string> = {
     `${v.code}: collection confirmed. Thank you.`,
 
   request_widened_coordinator: v =>
-    `${v.code}: buyer asks for 1 crate ${v.name}, ${v.area}, needed by ${v.cutoff}. Route it to a neighbouring circle from the desk.`,
+    `${v.code}: buyer asks for 1 ${v.unit ?? 'crate'} ${v.name}, ${v.area}, needed by ${v.cutoff}. Route it to a neighbouring circle from the desk.`,
 
   request_routed_seller: v =>
     `${v.code}: spare ${v.unit ?? 'crate'} of ${v.name} needed by ${v.cutoff} in a nearby circle. To offer, reply ${v.code}, your price for 1 ${v.unit ?? 'crate'}, then the pickup place.`,

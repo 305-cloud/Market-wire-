@@ -22,7 +22,7 @@ import { interpret, parseSellerQuote, parseCreateRequest, disambiguateHour } fro
 import { parseGiven } from '../parser/grammar.js'
 import { readTrader, looksCanonical, tokenize } from '../parser/lexicon.js'
 import { renderTemplate } from '../messages/templates.js'
-import { auditOutbound, rulesReport } from './rules-audit.js'
+import { auditOutbound, rulesReport, resetAudit } from './rules-audit.js'
 import { gsmSeptetCount } from '../messages/templates.js'
 import {
   initPersistence,
@@ -239,9 +239,9 @@ function fallbackReply(state: MarketState, traderId: TraderId, why: string): str
   if (why.startsWith('no cancellable')) return 'You have no open request to cancel. Offers you made end when the buyer holds another or the request closes.'
   if (why.startsWith('cutoff time missing')) return 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.'
   if (why.startsWith('cutoff time already')) return 'That time has passed or was not clear. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
-  if (why === 'unknown_request') return 'That request code was not found. Check the code at the start of the text you got.'
+  // Stress round 3: the same reply for an unknown code and one not sent to you, so neither leaks.
+  if (why === 'unknown_request' || why === 'not_member') return 'That request code is not one you can act on. Check the code at the start of the text you got.'
   if (why === 'closed') return renderTemplate('request_closed', {})
-  if (why === 'not_member') return 'That request was not sent to you, so you cannot offer or confirm on it.'
   if (why === 'not_requester') return 'Only the buyer who asked can do that.'
   if (why === 'taken') return 'That crate is already held by someone else.'
   if (why === 'stopped') return 'Invitations are paused for you. Reply START to resume.'
@@ -251,7 +251,7 @@ function fallbackReply(state: MarketState, traderId: TraderId, why: string): str
 }
 
 /** Unconfirmed reader suggestions per market and trader (in memory; a demo convenience). */
-const pendingSuggestions = new WeakMap<Market, Map<TraderId, string>>()
+const pendingSuggestions = new WeakMap<Market, Map<TraderId, { text: string; at: number }>>()
 
 /** Persist market state after successful mutations. */
 async function persistMarket(market: Market): Promise<void> {
@@ -614,10 +614,14 @@ export async function createServer() {
       {
         const pending = pendingSuggestions.get(market)
         const words = tokenize(text)
-        const saidYes = words.length > 0 && words.some(w => w.kind === 'yesno' && w.canonical === 'YES') &&
-          words.every(w => (w.kind === 'yesno' && w.canonical === 'YES') || w.kind === 'filler' || w.kind === 'connector')
-        const suggestion = pending?.get(traderId)
+        // Stress round 3: "ok thanks" is not a YES, and a suggestion lapses after 15 market minutes.
+        const isYes = (w: { kind: string; canonical: string; raw: string }) =>
+          w.kind === 'yesno' && w.canonical === 'YES' && !/^(ok|okay|okk|k|kk|alright|fine|good)\b/.test(w.raw)
+        const saidYes = words.length > 0 && words.some(isYes) &&
+          words.every(w => isYes(w) || w.kind === 'filler' || w.kind === 'connector')
+        const waiting = pending?.get(traderId)
         pending?.delete(traderId)
+        const suggestion = waiting && now.getTime() - waiting.at <= 15 * 60_000 ? waiting.text : undefined
         if (saidYes && suggestion) text = suggestion
         else if (!looksCanonical(text)) {
           const reading = readTrader(text)
@@ -630,7 +634,7 @@ export async function createServer() {
           if (reading?.sure) text = reading.text
           else if (reading) {
             if (!pendingSuggestions.has(market)) pendingSuggestions.set(market, new Map())
-            pendingSuggestions.get(market)!.set(traderId, reading.text)
+            pendingSuggestions.get(market)!.set(traderId, { text: reading.text, at: now.getTime() })
             deliverInbox(market, traderId, `Did you mean: ${reading.text}? Reply YES to send it.`)
             await persistMarket(market)
             return res.code(400).send({ status: 'rejected', reason: 'did_you_mean', suggestion: reading.text })
@@ -640,8 +644,13 @@ export async function createServer() {
       let upper = text.trim().toUpperCase().replace(/[.!?]+$/, '').trim()
       if (upper === 'DONE O') upper = 'DONE'
       {
-        const head = /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)\b\s*(.*)$/.exec(upper)
-        if (head && head[2] && !/^E\d+$/.test(head[2])) upper = head[1]!
+        // Stress round 3: only polite words may follow a command ("done o", "CANCEL pls E8"), and a
+        // named code is kept. Anything else is not stripped down to a bare command.
+        const POLITE = '(?:\\s+(?:O+|PLS|PLEASE|THANKS|THANK YOU|NOW|ABEG))*'
+        const polite = new RegExp(`^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)${POLITE}(?:\\s+(E\\d+))?${POLITE}$`).exec(upper)
+        if (polite) upper = polite[1]! + (polite[2] ? ' ' + polite[2] : '')
+        const flipped = /^(E\d+)\s+(DONE|CANCEL|WIDEN)$/.exec(upper)
+        if (flipped) upper = `${flipped[2]} ${flipped[1]}`
       }
       const replyMark = market.messages.length
       // Claude fix (22 Nov): every inbound text gets a reply. If a path rejects without telling the
@@ -708,6 +717,15 @@ export async function createServer() {
           requestCode = widenCandidates[0]?.code ?? null
         }
 
+        // Stress round 3: a held request has nothing to widen; say so plainly.
+        const heldMine = [...state.requests.values()].filter(r => r.requesterId === traderId && r.state === 'held' &&
+          (!requestCode ? true : r.code === requestCode))
+        if ((requestCode || !widenCandidates.length) && heldMine.length === 1) {
+          const c = heldMine[0]!.code
+          deliverInbox(market, traderId, `${c}: you already hold a crate, so there is nothing to widen. Reply DONE ${c} when you collect it, or CANCEL ${c} to start again.`)
+          await persistMarket(market)
+          return guard(400, { status: 'rejected', reason: 'already_held' })
+        }
         if (!requestCode) return guard(400, { error: 'no wideneable request' })
 
         const cmd = { kind: 'widen' as const, by: traderId, requestCode }
@@ -850,7 +868,7 @@ export async function createServer() {
           return guard(400, { error: 'choose a pickup' })
         }
         const closed = given.requestCode ? state.requests.get(given.requestCode as RequestCode) : undefined
-        if (closed && (closed.state === 'expired' || closed.state === 'cancelled')) {
+        if (closed && (closed.state === 'expired' || closed.state === 'cancelled') && closed.invitedSellerIds.includes(traderId)) {
           deliverInbox(market, traderId, `${closed.code}: this request has ${closed.state === 'expired' ? 'ended' : 'been cancelled'}, so there is no handover to confirm.`)
           await persistMarket(market)
           return guard(400, { status: 'rejected', reason: 'closed' })
@@ -981,7 +999,7 @@ export async function createServer() {
         }
         const quoteLike = /^(E\d+)\b/i.exec(text.trim())
         deliverInbox(market, traderId, quoteLike && state.traders.get(traderId)?.role !== 'coordinator'
-          ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 crate, then the pickup place).`
+          ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 ${unitWord(state.requests.get(quoteLike[1]!.toUpperCase() as RequestCode)?.item.unit ?? 'crate')}, then the pickup place).`
           : roleHelp(state, traderId))
         await persistMarket(market)
         return guard(400, { error: 'unparseable command' })
@@ -1113,6 +1131,8 @@ export async function createServer() {
       market.events   = []
       market.messages = []
       market.dedupe   = new Set()
+      pendingSuggestions.delete(market)
+      resetAudit(market)
       seedMarket(market)
 
       await persistMarket(market)
