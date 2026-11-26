@@ -9,8 +9,8 @@ import type { OutboundIntent } from '../domain/decide.js'
 import { checkInvariants, type InvariantId, type Violation } from '../domain/invariants.js'
 
 export const RULES: ReadonlyArray<{ id: InvariantId; text: string }> = [
-  { id: 'I1', text: 'A crate is held for one buyer at a time' },
-  { id: 'I2', text: 'A request holds one crate at a time' },
+  { id: 'I1', text: 'Each item of stock is held for one buyer at a time' },
+  { id: 'I2', text: 'A request holds one item at a time' },
   { id: 'I3', text: 'A request is collected once' },
   { id: 'I4', text: 'Paused sellers get no invites' },
   { id: 'I5', text: 'The coordinator sees a request only after its buyer shares it' },

@@ -255,12 +255,12 @@ test('STRESS: the losing seller is told plainly; no stranger learns a request st
   assert.match((await m.inbox('rowan')).at(-1).text, /not one you can act on/)
 })
 
-test('STRESS: no "no crate held" warning one minute after a request is made', async () => {
+test('STRESS: no "nothing held" warning one minute after a request is made', async () => {
   const m = await market()
   await m.clock(165)
   await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 6PM')
   await m.clock(1)
-  assert.ok(!(await m.inbox('jules')).some(x => /no crate held yet/.test(x.text)))
+  assert.ok(!(await m.inbox('jules')).some(x => /nothing held yet/.test(x.text)))
 })
 
 test('STRESS: requests the buyer cancelled do not count towards a shortage alert', async () => {
