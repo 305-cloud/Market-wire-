@@ -8,8 +8,8 @@
 import type { MarketState, Item } from './types.js'
 
 export interface PriceBand {
-  lowCents: number
-  highCents: number
+  lowKobo: number
+  highKobo: number
   trades: number
 }
 
@@ -45,20 +45,20 @@ export function priceBand(
       r.collectedAt >= windowStart &&
       r.collectedAt <= now,
     )
-    .map(r => r.priceCents)
+    .map(r => r.priceKobo)
 
   if (prices.length < MIN_TRADES) return null
 
   const sorted = [...prices].sort((a, b) => a - b)
-  const lowCents = nearestRank(sorted, 25)
-  const highCents = nearestRank(sorted, 75)
+  const lowKobo = nearestRank(sorted, 25)
+  const highKobo = nearestRank(sorted, 75)
 
-  return { lowCents, highCents, trades: sorted.length }
+  return { lowKobo, highKobo, trades: sorted.length }
 }
 
-/** Format a band result as the SMS hint line. Amounts are credits (cents / 100). */
+/** Format a band result as the SMS hint line. Amounts are credits (kobo / 100). */
 export function formatBandLine(band: PriceBand): string {
-  const low = (band.lowCents / 100).toLocaleString('en', { maximumFractionDigits: 0 })
-  const high = (band.highCents / 100).toLocaleString('en', { maximumFractionDigits: 0 })
+  const low = (band.lowKobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
+  const high = (band.highKobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
   return `Usual today: ${low}-${high} (${band.trades} trades)`
 }

@@ -80,7 +80,7 @@ describe('DONE / collect', () => {
     state = createResult.nextState!
 
     // Ellis offers
-    const offerCmd: DomainCommand = { kind: 'offer', by: 'ellis', requestCode: 'E1', priceCents: 420000, pickupArea: 'Cedar Lane' }
+    const offerCmd: DomainCommand = { kind: 'offer', by: 'ellis', requestCode: 'E1', priceKobo: 420000, pickupArea: 'Cedar Lane' }
     const offerResult = interpretCommand(offerCmd, state, T0)
     if (!offerResult.ok) throw new Error()
     state = offerResult.nextState!
@@ -113,7 +113,7 @@ describe('parseSellerQuote', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E7',
-      priceCents: 420000,
+      priceKobo: 420000,
       pickupArea: 'Cedar Lane',
     })
   })
@@ -124,7 +124,7 @@ describe('parseSellerQuote', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E7',
-      priceCents: 420000,
+      priceKobo: 420000,
       pickupArea: 'Cedar Lane Area',
     })
   })

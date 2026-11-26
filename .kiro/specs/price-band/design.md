@@ -9,7 +9,7 @@ Add `PriceRecord` and `priceHistory` to `MarketState`:
 export interface PriceRecord {
   item: Item         // name + grade + unit, copied from the request
   circleId: CircleId // circle of the original requester
-  priceCents: number  // from the accepted offer at collection time
+  priceKobo: number  // from the accepted offer at collection time
   collectedAt: Date  // from the request_collected event's `at` field
 }
 
@@ -19,7 +19,7 @@ priceHistory: PriceRecord[]
 
 `emptyMarketState` initialises `priceHistory` as `[]`.
 
-`evolve` handles `request_collected` by looking up the request's `item` and `requesterId → circleId`, the hold's `offerId → priceCents`, and appending a `PriceRecord`. Because all of this comes from already-evolved state (the request and offer are in state before the collection event fires), no extra events are needed. Replay is deterministic.
+`evolve` handles `request_collected` by looking up the request's `item` and `requesterId → circleId`, the hold's `offerId → priceKobo`, and appending a `PriceRecord`. Because all of this comes from already-evolved state (the request and offer are in state before the collection event fires), no extra events are needed. Replay is deterministic.
 
 ## Percentile calculation (nearest rank)
 
@@ -41,14 +41,14 @@ export function priceBand(
   item: Item,
   circleId: string,
   now: Date,
-): { lowCents: number; highCents: number; trades: number } | null
+): { lowKobo: number; highKobo: number; trades: number } | null
 ```
 
 1. Filter `state.priceHistory` to entries where `item.name`, `item.grade` and `item.unit` match and `circleId` matches.
 2. Further filter to entries where `collectedAt >= now − 24*60*60*1000 ms`.
 3. If fewer than 3 entries remain, return `null`.
-4. Sort ascending by `priceCents` and apply the nearest-rank formula.
-5. Return `{ lowCents, highCents, trades: filtered.length }`.
+4. Sort ascending by `priceKobo` and apply the nearest-rank formula.
+5. Return `{ lowKobo, highKobo, trades: filtered.length }`.
 
 ## Template change
 
@@ -82,4 +82,4 @@ Base message: 92 septets. With newline + bandLine: 130 septets. Within 160.
 
 ## Seed design
 
-The demo seed appends historical `DomainEvent` values representing completed trades before the interactive demo starts. The seed uses a separate fictional request series (codes `H1`, `H2`, … mapped via `nextRequestNumber` offset), fictional seller ids and prices that bracket a realistic range (e.g. 4100–4400 cents). At least 5 trades are seeded so the band is comfortably above the 3-trade minimum.
+The demo seed appends historical `DomainEvent` values representing completed trades before the interactive demo starts. The seed uses a separate fictional request series (codes `H1`, `H2`, … mapped via `nextRequestNumber` offset), fictional seller ids and prices that bracket a realistic range (e.g. 4100–4400 kobo). At least 5 trades are seeded so the band is comfortably above the 3-trade minimum.

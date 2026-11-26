@@ -108,9 +108,8 @@ export function checkInvariants(
   // I7: Replay invariant is checked externally (see test/property/model.property.test.ts)
 
   // I8: No circle-wide message contains a price, phone number or customer note
-  // Any international (E.164) or local-format phone number, and any price in credits or a currency.
-  const phonePattern = /\+\d[\d\s-]{7,16}\d|\b0\d{9,10}\b/
-  const pricePattern = /\b(?:USD|EUR|GBP|INR|KES|NGN|BRL|MXN|ZAR)\s*[\d,]+|[$€£¥₹₦₱]\s*[\d,]+|\b\d{3,}[\s,]\d{3}\b|[\d,]+\s*credits/i
+  const phonePattern = /\+?234\d{10}|\b0[789]\d{9}\b/
+  const pricePattern = /NGN\s+[\d,]+|₦\s*[\d,]+|\b\d{3,}[\s,]\d{3}\b|[\d,]+\s*credits/i
   const circleWideTemplates = new Set(['seller_invited', 'request_routed_seller'])
   for (const ob of outbound) {
     if (circleWideTemplates.has(ob.template)) {

@@ -44,7 +44,7 @@ export interface DemoTradeSeededEvent {
   workspaceId: WorkspaceId
   circleId: CircleId
   item: Item
-  priceCents: number
+  priceKobo: number
   at: Date
 }
 
@@ -125,7 +125,7 @@ export interface OfferMadeEvent {
   requestCode: RequestCode
   crateId: CrateId
   sellerId: TraderId
-  priceCents: number
+  priceKobo: number
   pickupArea: string
   replyRef: string
   revision: number
@@ -137,7 +137,7 @@ export interface OfferRevisedEvent {
   workspaceId: WorkspaceId
   offerId: OfferId
   requestCode: RequestCode
-  priceCents: number
+  priceKobo: number
   pickupArea: string
   revision: number
   at: Date

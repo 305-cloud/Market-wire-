@@ -14,7 +14,7 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
   switch (ev.type) {
     case 'demo_trade_seeded':
       return { ...state, priceHistory: [...state.priceHistory, {
-        item: ev.item, circleId: ev.circleId, priceCents: ev.priceCents, collectedAt: ev.at,
+        item: ev.item, circleId: ev.circleId, priceKobo: ev.priceKobo, collectedAt: ev.at,
       }] }
     case 'shortage_alerted': {
       const shortageAlerts = new Map(state.shortageAlerts)
@@ -107,7 +107,7 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
         requestCode: ev.requestCode,
         crateId: ev.crateId,
         sellerId: ev.sellerId,
-        priceCents: ev.priceCents,
+        priceKobo: ev.priceKobo,
         pickupArea: ev.pickupArea,
         replyRef: ev.replyRef,
         revision: ev.revision,
@@ -137,7 +137,7 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
       if (o) {
         offers.set(ev.offerId, {
           ...o,
-          priceCents: ev.priceCents,
+          priceKobo: ev.priceKobo,
           pickupArea: ev.pickupArea,
           revision: ev.revision,
         })
@@ -219,7 +219,7 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
 
       // Task 18: append a PriceRecord for fair-price band calculation.
       // Derive item from the request, circleId from the requester's trader record,
-      // and priceCents from the accepted offer linked through the live hold.
+      // and priceKobo from the accepted offer linked through the live hold.
       // Using pre-mutation state to look up offer and trader (hold state not yet updated above).
       const priceHistory = state.priceHistory
       let newPriceHistory = priceHistory
@@ -232,7 +232,7 @@ export function evolve(state: MarketState, ev: DomainEvent): MarketState {
             {
               item: req.item,
               circleId: requester.circleId,
-              priceCents: offer.priceCents,
+              priceKobo: offer.priceKobo,
               collectedAt: ev.at,
             },
           ]

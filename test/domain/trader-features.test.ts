@@ -12,13 +12,13 @@ const eggs: Item = { name: 'eggs', grade: 'medium', unit: 'crate30' }
 describe('trader features', () => {
   it('uses nearest ranks over the exact price window, with at least three matching trades', () => {
     const state = emptyMarketState('demo')
-    const trade = (priceCents: number, offset: number, item = eggs, circleId = 'local') =>
-      ({ item, circleId, priceCents, collectedAt: new Date(now.getTime() + offset) })
+    const trade = (priceKobo: number, offset: number, item = eggs, circleId = 'local') =>
+      ({ item, circleId, priceKobo, collectedAt: new Date(now.getTime() + offset) })
     state.priceHistory = [trade(100, 0), trade(200, -86_400_000), trade(999, 1),
       trade(999, -86_400_001), trade(999, 0, { ...eggs, grade: 'large' }), trade(999, 0, eggs, 'north')]
     expect(priceBand(state, eggs, 'local', now)).toBeNull()
     state.priceHistory.push(trade(300, -1))
-    expect(priceBand(state, eggs, 'local', now)).toEqual({ lowCents: 100, highCents: 300, trades: 3 })
+    expect(priceBand(state, eggs, 'local', now)).toEqual({ lowKobo: 100, highKobo: 300, trades: 3 })
   })
 
   it('keeps private variables out of circle-wide texts for generated values', () => {

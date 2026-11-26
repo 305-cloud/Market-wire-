@@ -36,7 +36,7 @@ test('real PostgreSQL serializes two buyers for one crate and replays a held dea
       })
       assert.ok(request.ok)
       assert.ok((await submit({
-        kind: 'offer', by: 'ellis', requestCode: `E${index + 1}`, priceCents: 420000, pickupArea: 'Cedar Lane',
+        kind: 'offer', by: 'ellis', requestCode: `E${index + 1}`, priceKobo: 420000, pickupArea: 'Cedar Lane',
       })).ok)
     }
 

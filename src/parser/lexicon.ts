@@ -5,13 +5,12 @@
 // and otherwise proposes the canonical text for the trader to confirm.
 
 import { LEXICON, type LexKind } from './lexicon-data.js'
-import { CATALOG, LABEL_PATTERN, UNIT_WORDS, findItem } from '../domain/catalog.js'
 
 type Entry = { canonical: string; kind: LexKind; sure: boolean }
 type Token = { raw: string; canonical: string; kind: LexKind | 'code' | 'digit' | 'clock' | 'unknown'; sure: boolean }
 
 export interface Reading {
-  /** Canonical text the existing parsers understand, e.g. "NEED 1 SACK FLOUR BEFORE 5PM". */
+  /** Canonical text the existing parsers understand, e.g. "NEED 1 CRATE EGGS BEFORE 5PM". */
   text: string
   /** False when any word was guessed (typo match or an ambiguous word): ask the trader first. */
   sure: boolean
@@ -21,19 +20,7 @@ const PHRASES = new Map<string, Entry>()
 // Everyday words that misfire as commands (consumer review, 22 Nov): 'egg don finish', 'hold 1', 'i don reach'.
 const SKIP = new Set(['don', 'hold', 'got', 'good', 'on', 'off', 'other', 'else', 'mind', 'far', 'further', 'finish', 'reached', 'reach me', 'e don reach', 'e don reach me', 'drop', 'void', 'join', 'return', 'continue', 'sub', 'how'])
 let longest = 1
-// Catalogue words and a few other languages' command words, added on top of the generated lexicon.
-const MULTILINGUAL: ReadonlyArray<readonly [string, string, LexKind, boolean]> = [
-  ...CATALOG.flatMap(i => i.aliases.map(a => [a, i.label, 'item', true] as const)),
-  ...UNIT_WORDS.map(u => [u, u.toUpperCase().replace(/XES$/, 'X').replace(/S$/, ''), 'unit', true] as const),
-  ...['saco', 'sacos', 'sac', 'sacs', 'gunia', 'bori', 'bolsa', 'bolsas'].map(u => [u, 'SACK', 'unit', true] as const),
-  ...['bombona', 'botijão', 'botijao', 'bouteille', 'mtungi'].map(u => [u, 'CYLINDER', 'unit', true] as const),
-  ...['necesito', 'necesitamos', 'preciso', 'precisamos', 'besoin', 'jai besoin', 'il faut', 'chahiye', 'nahitaji', 'ninahitaji', 'nataka', 'brauche'].map(w => [w, 'NEED', 'command', true] as const),
-  ...['antes de las', 'antes de', 'antes', 'avant', 'kabla ya', 'kabla', 'bis'].map(w => [w, 'BEFORE', 'time', true] as const),
-  ...['cancelar', 'annuler', 'ghairi'].map(w => [w, 'CANCEL', 'command', true] as const),
-  ...['ayuda', 'aide', 'ajuda', 'msaada', 'hilfe'].map(w => [w, 'HELP', 'command', true] as const),
-  ...['de', 'la', 'las', 'des', 'du', 'le', 'una', 'un', 'uno', 'por favor', 'svp', 'tafadhali'].map(w => [w, '', 'filler', true] as const),
-]
-for (const [variant, canonical, kind, sure] of [...MULTILINGUAL, ...LEXICON]) {
+for (const [variant, canonical, kind, sure] of LEXICON) {
   const key = variant.trim().toLowerCase().replace(/\s+/g, ' ')
   if (!key || PHRASES.has(key) || SKIP.has(key)) continue
   PHRASES.set(key, { canonical, kind, sure })
@@ -66,7 +53,7 @@ export function tokenize(text: string): Token[] {
   const words = text.toLowerCase()
     .replace(/[“”"'’`]/g, '')
     .replace(/(\d)\s*(am|pm)\b/g, '$1$2')
-    .replace(/[^\p{L}0-9:₦\s]/gu, ' ')
+    .replace(/[^a-z0-9:₦\s]/g, ' ')
     .split(/\s+/).filter(Boolean)
   const tokens: Token[] = []
   for (let i = 0; i < words.length;) {
@@ -124,11 +111,10 @@ export function readTrader(text: string): Reading | null {
   }
 
   const items = tokens.filter(t => t.kind === 'item').map(t => t.canonical)
-  const itemPhrase = tokens.find(t => t.kind === 'unit' && LABEL_PATTERN.test(t.canonical))
+  const itemPhrase = tokens.find(t => t.kind === 'unit' && /\b(EGGS|MILK)\b/.test(t.canonical))
   // A command phrase such as "any eggs" can swallow the item word, so fall back to the raw text.
-  const item = items.find(i => LABEL_PATTERN.test(i))?.match(LABEL_PATTERN)?.[0]?.toUpperCase() ??
-    itemPhrase?.canonical.match(LABEL_PATTERN)?.[0]?.toUpperCase() ??
-    findItem(text)?.label ?? (/\beg+s?\b/i.test(text) ? 'EGGS' : undefined)
+  const item = items.find(i => /EGGS|MILK/.test(i))?.match(/EGGS|MILK/)?.[0] ?? itemPhrase?.canonical.match(/EGGS|MILK/)?.[0] ??
+    (/\beg+s?\b|\beggs?\b/i.test(text) ? 'EGGS' : /\bmilk\b/i.test(text) ? 'MILK' : undefined)
   const wantsStock = commands.includes('NEED') || (!!item && !commands.some(c => SIMPLE.has(c)))
 
   if (wantsStock) {
@@ -154,8 +140,7 @@ export function readTrader(text: string): Reading | null {
     if (unknown > 2) sure = false
     // Stress round 3: a question, an offer ('i have / i get / bring') or another command means ask first.
     if (commands.some(c => c !== 'NEED') || /\?|\b(how much|how many|have|get|got|bring|sell|selling|dey sell)\b/i.test(text)) sure = false
-    const unit = CATALOG.find(i => i.label === item)?.unitWord.toUpperCase() ?? 'UNIT'
-    return { text: `NEED ${quantity} ${unit} ${item} ${time}`, sure }
+    return { text: `NEED ${quantity} CRATE ${item} ${time}`, sure }
   }
 
   const simple = commands.find(c => SIMPLE.has(c))
@@ -175,5 +160,5 @@ export function looksCanonical(text: string): boolean {
     /^(DONE|CANCEL|WIDEN|STOP|START|PAUSE|RESUME|HELP)(\s+E\d+)?(\s+(o+|pls|please|thanks|thank you|now|abeg))*(\s+E\d+)?[.!?]*$/i.test(t) ||
     /^GIVEN\s+\d{3}(\s+E\d+)?[.!?]?$/i.test(t) ||
     /^(YES|NO|STATUS)[.!?]?$/i.test(t) ||
-    new RegExp(`^NEED\\s+\\d+\\s+(${UNIT_WORDS.join('|')})\\s+(${CATALOG.map(i => i.label).join('|')})\\s+(BEFORE|BY)\\s+\\d{1,2}(:\\d{2})?\\s*(AM|PM)?[.!?]?$`, 'i').test(t)
+    /^NEED\s+\d+\s+(CRATES?|TRAYS?)\s+(EGGS|MILK)\s+(BEFORE|BY)\s+\d{1,2}(:\d{2})?\s*(AM|PM)?[.!?]?$/i.test(t)
 }

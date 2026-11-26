@@ -22,7 +22,6 @@ import { interpret, parseSellerQuote, parseCreateRequest, disambiguateHour } fro
 import { parseGiven } from '../parser/grammar.js'
 import { readTrader, looksCanonical, tokenize } from '../parser/lexicon.js'
 import { renderTemplate } from '../messages/templates.js'
-import { findItem, unitWordFor, ITEM_LIST, EXAMPLE_NEED } from '../domain/catalog.js'
 import { auditOutbound, rulesReport, resetAudit } from './rules-audit.js'
 import { gsmSeptetCount } from '../messages/templates.js'
 import {
@@ -173,7 +172,7 @@ function replyTo(outbound: OutboundIntent[], providerMessageId: string, onlyTo?:
 // ---------------------------------------------------------------------------
 // Claude fix (22 Nov): role-specific help and plain fallback replies, so no text goes unanswered.
 // ---------------------------------------------------------------------------
-const BUYER_HELP = `To ask: ${EXAMPLE_NEED}. Reply an offer number to hold, DONE when collected, WIDEN to ask the coordinator, CANCEL to stop.`
+const BUYER_HELP = 'To ask: NEED 1 CRATE EGGS BEFORE 5PM. Reply an offer number to hold, DONE when collected, WIDEN to ask the coordinator, CANCEL to stop.'
 const SELLER_HELP = 'To offer: E7 4200 Cedar Lane (request code, your price, pickup place). At pickup: GIVEN and the buyer\'s code, e.g. GIVEN 123 E7. PAUSE stops invites.'
 
 function isSellerNow(state: MarketState, traderId: TraderId): boolean {
@@ -187,7 +186,7 @@ function isSellerNow(state: MarketState, traderId: TraderId): boolean {
 const COORD_HELP = 'Coordinator desk: widened requests and shortage alerts arrive here. Route a widened request from the desk. The desk does not buy or sell.'
 
 const LIVE_STATES = new Set(['open_local', 'widened', 'held'])
-const unitWord = (unit: string) => unitWordFor(unit)
+const unitWord = (unit: string) => unit.replace(/crate30/g, 'crate').replace(/bottle50/g, 'bottle')
 const hhmm = (d: Date) => d.toISOString().slice(11, 16)
 
 /** Open requests that invite this trader as a seller (most recent last). */
@@ -227,24 +226,24 @@ function statusReply(state: MarketState, traderId: TraderId): string {
     const myHold = [...state.holds.values()].find(h => h.requestCode === r.code && h.state === 'live' &&
       state.offers.get(h.offerId)?.sellerId === traderId)
     const mine = [...state.offers.values()].find(o => o.requestCode === r.code && o.sellerId === traderId && o.state === 'proposed')
-    lines.push(myHold ? `${r.code}: the buyer holds your ${unitWord(r.item.unit)}; ask for their code, then GIVEN code ${r.code}`
-      : mine ? `${r.code}: your offer of ${(mine.priceCents / 100).toLocaleString('en')} credits is waiting`
+    lines.push(myHold ? `${r.code}: the buyer holds your crate; ask for their code, then GIVEN code ${r.code}`
+      : mine ? `${r.code}: your offer of ${(mine.priceKobo / 100).toLocaleString('en')} credits is waiting`
       : `${r.code}: you're invited to offer, needed by ${hhmm(r.cutoffAt)}`)
   }
-  return lines.length ? lines.join('. ') + '.' : `Nothing open for you. To ask: ${EXAMPLE_NEED}.`
+  return lines.length ? lines.join('. ') + '.' : 'Nothing open for you. To ask: NEED 1 CRATE EGGS BEFORE 5PM.'
 }
 
 function fallbackReply(state: MarketState, traderId: TraderId, why: string): string {
   if (state.traders.get(traderId)?.role === 'coordinator') return COORD_HELP
-  if (why.startsWith('no wideneable')) return `You have no open request to widen. To ask for stock: ${EXAMPLE_NEED}.`
+  if (why.startsWith('no wideneable')) return 'You have no open request to widen. To ask for stock: NEED 1 CRATE EGGS BEFORE 5PM.'
   if (why.startsWith('no cancellable')) return 'You have no open request to cancel. Offers you made end when the buyer holds another or the request closes.'
-  if (why.startsWith('cutoff time missing')) return `Add a time, e.g. ${EXAMPLE_NEED} or BEFORE 18:00.`
+  if (why.startsWith('cutoff time missing')) return 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.'
   if (why.startsWith('cutoff time already')) return 'That time has passed or was not clear. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
   // Stress round 3: the same reply for an unknown code and one not sent to you, so neither leaks.
   if (why === 'unknown_request' || why === 'not_member') return 'That request code is not one you can act on. Check the code at the start of the text you got.'
   if (why === 'closed') return renderTemplate('request_closed', {})
   if (why === 'not_requester') return 'Only the buyer who asked can do that.'
-  if (why === 'taken') return 'That stock is already held by someone else.'
+  if (why === 'taken') return 'That crate is already held by someone else.'
   if (why === 'stopped') return 'Invitations are paused for you. Reply START to resume.'
   if (why === 'too_many_open') return 'You already have 3 open requests. CANCEL one before asking again.'
   if (why === 'past_cutoff') return 'That time has passed. Send a later time, e.g. BEFORE 5PM or BEFORE 18:00.'
@@ -304,7 +303,7 @@ function seedMarket(market: Market): void {
     market.events.push(ev)
   }
 
-  // 3. Seed E7: Mara's bakery requests 1 sack of flour before 18:00Z
+  // 3. Seed E7: Mara requests 1 crate medium eggs before 18:00Z
   const cutoff = new Date(now)
   cutoff.setUTCHours(18, 0, 0, 0)
   if (cutoff <= now) cutoff.setUTCDate(cutoff.getUTCDate() + 1)
@@ -314,14 +313,14 @@ function seedMarket(market: Market): void {
   const cmdCreate = {
     kind: 'create_request' as const,
     by: ALIAS_TO_ID.mara,
-    item: { name: 'flour', grade: 'baking', unit: 'sack25kg' },
+    item: { name: 'eggs', grade: 'medium', unit: 'crate30' },
     quantity: 1,
     cutoffAt: cutoff,
   }
 
-  for (const [index, priceCents] of [410_000, 420_000, 430_000, 440_000, 450_000].entries()) {
+  for (const [index, priceKobo] of [410_000, 420_000, 430_000, 440_000, 450_000].entries()) {
     market.events.push({ type: 'demo_trade_seeded', workspaceId: market.id,
-      circleId: LOCAL_CIRCLE, item: cmdCreate.item, priceCents,
+      circleId: LOCAL_CIRCLE, item: cmdCreate.item, priceKobo,
       at: new Date(now.getTime() - (index + 2) * 60 * 60_000) })
   }
 
@@ -478,7 +477,7 @@ export async function createServer() {
           requestCode: o.requestCode,
           sellerId:    o.sellerId,
           sellerAlias: state.traders.get(o.sellerId)?.alias ?? o.sellerId,
-          priceCents:   o.priceCents,
+          priceKobo:   o.priceKobo,
           pickupArea:  o.pickupArea,
           ref:         o.replyRef,
           revision:    o.revision,
@@ -585,7 +584,7 @@ export async function createServer() {
         const rawAlias = typeof raw.alias === 'string' ? raw.alias.toLowerCase() : ''
         if (typeof raw.text === 'string' && Object.hasOwn(ALIAS_TO_ID, rawAlias)) {
           deliverInbox(market, ALIAS_TO_ID[rawAlias]!, raw.text.trim()
-            ? `That text was too long. Keep it short, e.g. ${EXAMPLE_NEED}.`
+            ? 'That text was too long. Keep it short, e.g. NEED 1 CRATE EGGS BEFORE 5PM.'
             : 'That text was empty. Reply HELP to see what you can send.')
           await persistMarket(market)
         }
@@ -599,7 +598,7 @@ export async function createServer() {
       if ([...text].length > 320) {
         const longId = ALIAS_TO_ID[alias.toLowerCase()]
         if (longId && Object.hasOwn(ALIAS_TO_ID, alias.toLowerCase())) {
-          deliverInbox(market, longId, `That text was too long. Keep it short, e.g. ${EXAMPLE_NEED} or E7 4200 Cedar Lane.`)
+          deliverInbox(market, longId, 'That text was too long. Keep it short, e.g. NEED 1 CRATE EGGS BEFORE 5PM or E7 4200 Cedar Lane.')
           await persistMarket(market)
         }
         return res.code(400).send({ error: 'message too long (max 320 characters)' })
@@ -630,7 +629,7 @@ export async function createServer() {
         await persistMarket(market)
         return res.send({ status: 'ok' })
       }
-      // Claude (22 Nov): rule-based reader for messy texts ("pls need 2 sack flour b4 6", "necesito 1 saco harina antes 5").
+      // Claude (22 Nov): rule-based reader for messy texts ("abeg i need 2 crate egg b4 6").
       // Sure readings run as the canonical command; unsure ones are offered back for a YES.
       {
         const pending = pendingSuggestions.get(market)
@@ -746,7 +745,7 @@ export async function createServer() {
           (!requestCode ? true : r.code === requestCode))
         if ((requestCode || !widenCandidates.length) && heldMine.length === 1) {
           const c = heldMine[0]!.code
-          deliverInbox(market, traderId, `${c}: you already hold stock on this request, so there is nothing to widen. Reply DONE ${c} when you collect it, or CANCEL ${c} to start again.`)
+          deliverInbox(market, traderId, `${c}: you already hold a crate, so there is nothing to widen. Reply DONE ${c} when you collect it, or CANCEL ${c} to start again.`)
           await persistMarket(market)
           return guard(400, { status: 'rejected', reason: 'already_held' })
         }
@@ -957,15 +956,15 @@ export async function createServer() {
             return guard(400, { error: 'cutoff time already elapsed' })
           }
 
-          if (!findItem(text)) {
-            deliverInbox(market, traderId, `Market Wire finds ${ITEM_LIST}. Send e.g. ${EXAMPLE_NEED}.`)
+          if (!/\b(eggs?|milk)\b/i.test(text)) {
+            deliverInbox(market, traderId, 'For now Market Wire handles eggs and milk. Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.')
             await persistMarket(market)
             return guard(400, { error: 'unsupported item' })
           }
           if (createCmd.quantity !== 1) {
-            deliverInbox(market, traderId, `Market Wire finds one sack, tray or cylinder per request for now. Send ${EXAMPLE_NEED} once for each one you need.`)
+            deliverInbox(market, traderId, 'Market Wire finds one crate per request for now. Send NEED 1 CRATE EGGS BEFORE 5PM once for each crate you need.')
             await persistMarket(market)
-            return guard(400, { error: 'one unit per request' })
+            return guard(400, { error: 'one crate per request' })
           }
           cmd = { ...createCmd, cutoffAt: cutoff }
         }
@@ -998,23 +997,23 @@ export async function createServer() {
           }
           if (heldByMe.length === 1) {
             const code = heldByMe[0]!.code
-            deliverInbox(market, traderId, `${code}: you already hold stock on this request. Reply DONE ${code} when you collect it, or CANCEL ${code} to start again.`)
+            deliverInbox(market, traderId, `${code}: you already hold a crate on this request. Reply DONE ${code} when you collect it, or CANCEL ${code} to start again.`)
             await persistMarket(market)
             return guard(400, { status: 'rejected', reason: 'already_held' })
           }
         }
         // Claude (22 Nov, consumer round 2): say what is missing instead of the general help.
         const lower = text.trim().toLowerCase()
-        const noPlace = /^(e\d+)\s+[$€£¥₹₦#]?(\d[\d,.]*k?)\s*$/i.exec(text.trim())
+        const noPlace = /^(e\d+)\s+[n₦#]?(\d[\d,.]*k?)\s*$/i.exec(text.trim())
         const myInvites = invitesFor(state, traderId)
         let hint: string | undefined
         if (noPlace) hint = `Add the pickup place: ${noPlace[1]!.toUpperCase()} ${noPlace[2]} <place>.`
         else if (myInvites.length === 1 && !/\be\d+\b/i.test(lower) && /\b\d{3,}(?:\.\d+)?k?\b|\b\d+(?:\.\d+)?k\b/i.test(lower)) {
           const price = /\b(\d[\d,]{2,}|\d+(?:\.\d+)?k)\b/i.exec(lower)?.[1] ?? '4200'
           hint = `Is this an offer for ${myInvites[0]!.code}? Reply ${myInvites[0]!.code} ${price} <pickup place>.`
-        } else if (/\b(need|nid|want|wan|necesito|preciso|besoin|chahiye|nahitaji|brauche)\b/.test(lower)) {
-          hint = !findItem(lower) ? `Market Wire finds ${ITEM_LIST}. Send e.g. ${EXAMPLE_NEED}.`
-            : !/\b(before|by|b4)\b/.test(lower) ? `Add a time, e.g. ${EXAMPLE_NEED} or BEFORE 18:00.` : undefined
+        } else if (/\b(need|nid|want|wan)\b/.test(lower)) {
+          hint = !/\b(eggs?|egg|milk)\b/.test(lower) ? 'For now Market Wire handles eggs and milk. Send e.g. NEED 1 CRATE EGGS BEFORE 5PM.'
+            : !/\b(before|by|b4)\b/.test(lower) ? 'Add a time, e.g. NEED 1 CRATE EGGS BEFORE 5PM or BEFORE 18:00.' : undefined
         }
         if (hint) {
           deliverInbox(market, traderId, hint)
@@ -1023,7 +1022,7 @@ export async function createServer() {
         }
         const quoteLike = /^(E\d+)\b/i.exec(text.trim())
         deliverInbox(market, traderId, quoteLike && state.traders.get(traderId)?.role !== 'coordinator'
-          ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 ${unitWord(state.requests.get(quoteLike[1]!.toUpperCase() as RequestCode)?.item.unit ?? 'unit')}, then the pickup place).`
+          ? `To offer on ${quoteLike[1]!.toUpperCase()}: ${quoteLike[1]!.toUpperCase()} 4200 Cedar Lane (your price for 1 ${unitWord(state.requests.get(quoteLike[1]!.toUpperCase() as RequestCode)?.item.unit ?? 'crate')}, then the pickup place).`
           : roleHelp(state, traderId))
         await persistMarket(market)
         return guard(400, { error: 'unparseable command' })
@@ -1045,7 +1044,7 @@ export async function createServer() {
       flushOutbound(market, replyTo(d.outbound, providerMessageId, traderId), state2)
       // Claude fix (22 Nov): tell the seller their offer went out.
       if (cmd.kind === 'offer') {
-        const credits = (cmd.priceCents / 100).toLocaleString('en', { maximumFractionDigits: 0 })
+        const credits = (cmd.priceKobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
         deliverInbox(market, traderId, `${cmd.requestCode}: your offer of ${credits} credits at ${cmd.pickupArea} went to the buyer. To change it, send a new price.`)
       }
       await persistMarket(market)

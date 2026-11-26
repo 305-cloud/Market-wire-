@@ -1,11 +1,10 @@
 // src/parser/interpret.ts
 // Parse inbound SMS messages into domain commands.
-// Handles: plain request, anchored UTC deadline, seller quote with zone and integer cents,
+// Handles: plain request, anchored UTC deadline, seller quote with zone and integer kobo,
 // numeric and coded replies, STOP, HELP and DONE.
 // Rejects stale bare 1 after a quote changes rather than selecting the latest revision.
 
 import type { MarketState } from '../domain/types.js'
-import { findItem, UNIT_PATTERN } from '../domain/catalog.js'
 import type { Command as DomainCommand } from '../domain/commands.js'
 import { parseReply, type Command as ParsedCommand } from './grammar.js'
 import { resolveTarget } from '../app/resolve-target.js'
@@ -201,7 +200,7 @@ function resolveAcceptCommand(state: MarketState, senderId: string, parsed: Extr
  * Parse a seller quote message into an offer command.
  * Expected format: "E7 4200 pickup-zone" or similar variations.
  * - Request code (E7)
- * - Price in integer cents (420000 for 4200 credits)
+ * - Price in integer kobo (420000 for 4200 credits)
  * - Pickup zone (generic location)
  */
 export function parseSellerQuote(message: string, senderId: string): DomainCommand | null {
@@ -213,9 +212,8 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
   const requestCode = parts[0].toUpperCase()
   if (!/^E\d+$/.test(requestCode)) return null
 
-  // Claude fix (22 Nov): accept how traders write prices: 4,300 / $4200 / €4200 / 4.5k.
-  // A leading currency sign is dropped: credits are the only unit the market keeps.
-  let pricePart = parts[1].replace(/^(?:[$€£¥₹₦₱₩₺₽R]|USD|EUR|GBP|INR|KES|NGN|BRL|MXN|ZAR)/i, '').replace(/,(?=\d{3}(?:,|$))/g, '')
+  // Claude fix (22 Nov): accept how traders write prices: 4,300 / N4200 / ₦4200.
+  let pricePart = parts[1].replace(/^(?:N|₦)/i, '').replace(/,(?=\d{3}(?:,|$))/g, '')
   // "4.5k" and "4k" mean thousands.
   const kilo = /^(\d+(?:\.\d{1,3})?)k$/i.exec(pricePart)
   if (kilo) pricePart = String(Math.round(Number(kilo[1]) * 1000))
@@ -228,8 +226,8 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
   // Validate price as whole credits (1..1,000,000). Reject zero/negative/absurd values.
   if (!Number.isSafeInteger(priceInput) || priceInput < 1 || priceInput > 1000000) return null
 
-  // Convert whole credits to cents (×100)
-  const priceCents = priceInput * 100
+  // Convert whole credits to kobo (×100)
+  const priceKobo = priceInput * 100
 
   const pickupArea = parts.slice(2).join(' ')
 
@@ -237,7 +235,7 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
     kind: 'offer',
     by: senderId,
     requestCode,
-    priceCents,
+    priceKobo,
     pickupArea,
   }
 }
@@ -248,7 +246,7 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
 
 /**
  * Parse a create-request message.
- * Expected format: "1 sack flour before 6pm" or similar.
+ * Expected format: "1 crate medium eggs before 6pm" or similar.
  *
  * @param nowAt - Reference time for hour disambiguation (defaults to wall clock).
  *   Pass the market clock time so that bare hours 8 and 9 resolve correctly when
@@ -257,18 +255,24 @@ export function parseSellerQuote(message: string, senderId: string): DomainComma
 export function parseCreateRequest(message: string, senderId: string, nowAt?: Date): DomainCommand | null {
   const trimmed = message.trim().toLowerCase()
 
-  // Quantity: a number followed by any unit word ("1 sack", "2 trays", "1 cylinder").
-  const qtyMatch = trimmed.match(new RegExp(`\\b(\\d+)\\s+${UNIT_PATTERN.source}`, 'i'))
+  // Try to extract quantity
+  const qtyMatch = trimmed.match(/\b(\d+)\s+(crate|crates|tray|trays)\b/i)
   if (!qtyMatch) return null
   const quantity = parseInt(qtyMatch[1], 10)
 
-  // Item: the catalogue decides the unit and grade. An unknown item keeps its first word after
-  // the unit so the server can tell the trader which items are supported.
-  const found = findItem(trimmed)
-  const after = trimmed.slice((qtyMatch.index ?? 0) + qtyMatch[0].length).trim().split(/\s+/)
-  const name = found?.name ?? (after.find(w => w && w !== 'of') ?? 'unknown')
-  const grade = found?.grade ?? 'standard'
-  const unit = found?.unit ?? 'unit'
+  // Try to extract item description
+  let name = 'eggs'
+  let grade = 'medium'
+  let unit = 'crate30'
+
+  // Look for egg-related terms
+  if (trimmed.includes('eggs')) {
+    name = 'eggs'
+  } else if (trimmed.includes('milk')) {
+    name = 'milk'
+    grade = 'fullcream'
+    unit = 'bottle50'
+  }
 
   // Try to extract cutoff time (anchored UTC)
   const timeMatch = trimmed.match(/\b(before|by)\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i)

@@ -92,7 +92,7 @@ export function resolveTarget(
 
 export interface PendingOfferInfo {
   requestCode: string
-  offers: { ref: string; sellerAlias: string; priceCents: number; pickupArea: string }[]
+  offers: { ref: string; sellerAlias: string; priceKobo: number; pickupArea: string }[]
 }
 
 export function getPendingOffers(state: MarketState, requesterId: string): PendingOfferInfo | null {
@@ -114,7 +114,7 @@ export function getPendingOffers(state: MarketState, requesterId: string): Pendi
     .map(o => ({
       ref: o.replyRef,
       sellerAlias: state.traders.get(o.sellerId)?.alias ?? 'unknown',
-      priceCents: o.priceCents,
+      priceKobo: o.priceKobo,
       pickupArea: o.pickupArea,
     }))
 

@@ -25,7 +25,7 @@ export interface OfferCommand {
   kind: 'offer'
   by: TraderId
   requestCode: RequestCode
-  priceCents: number
+  priceKobo: number
   pickupArea: string
 }
 

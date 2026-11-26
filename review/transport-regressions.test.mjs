@@ -34,7 +34,7 @@ test('BUG-1: another seller revising their quote blocks "1" for an untouched off
 
 test('BUG-2: reply number 1 is reused for a different seller on the same request', async () => {
   const m = await market()
-  assert.equal((await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 5')).code, 200)  // E8 by Jules, invites Mara and Ellis
+  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 5')).code, 200)  // E8 by Jules, invites Mara and Ellis
   await m.send('ellis', 'E7 4200 Cedar Lane')   // Ellis offers to Mara on E7, ref 1
   await m.send('ellis', 'E8 4200 Cedar Lane')   // same crate to Jules on E8, ref 1
   assert.equal((await m.send('jules', '1 E8')).code, 200)                      // Jules holds Ellis's crate
@@ -63,7 +63,7 @@ test('BUG-4: price shown to buyer is 1/100 of what a trader would type', async (
 
 test('BUG-5: bare CANCEL with two open requests cancels one without asking', async () => {
   const m = await market()
-  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5')).code, 200)   // E8
+  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5')).code, 200)   // E8
   const r = await m.send('mara', 'CANCEL')
   const s = await m.state()
   assert.equal(s.requests.filter(request => request.state === 'open_local').length, 2)
@@ -73,20 +73,20 @@ test('BUG-5: bare CANCEL with two open requests cancels one without asking', asy
 
 test('a named cancellation affects only the named request', async () => {
   const m = await market()
-  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5')).code, 200)
   assert.equal((await m.send('mara', 'CANCEL E8')).code, 200)
   const state = await m.state()
   assert.equal(state.requests.find(request => request.code === 'E7').state, 'open_local')
   assert.equal(state.requests.find(request => request.code === 'E8').state, 'cancelled')
 })
 
-test('an expired hold tells the seller their stock is available again', async () => {
+test('an expired hold tells the seller their crate is available again', async () => {
   const m = await market()
   await m.send('ellis', 'E7 4200 Cedar Lane')
   assert.equal((await m.send('mara', '1 E7')).code, 200)
   await m.clock(240)
   assert.ok((await m.state()).messages.some(message =>
-    message.to === 'desktop' && message.from === 'ellis' && /stock is free again/i.test(message.text)))
+    message.to === 'desktop' && message.from === 'ellis' && /crate is free again/i.test(message.text)))
 })
 
 test('BUG-6: MCP market_events has no API route', async () => {
@@ -152,7 +152,7 @@ test('demo sessions expire on the wall clock even without market-clock advances'
 
 test('after midday, an unqualified deadline of 8 means 20:00 in the simulator', async () => {
   const m = await market()
-  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 8')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   assert.match((await m.state()).requests.find(request => request.code === 'E8').cutoffAt, /T20:00:/)
 })
 
@@ -203,15 +203,15 @@ test('five unmet asks generate exactly one aggregate coordinator alert in the wi
   const m = await market()
   // Claude (22 Nov): one trader may keep at most 3 open requests, so the asks come from two traders.
   for (const who of ['mara', 'mara', 'jules']) {
-    assert.equal((await m.send(who, 'NEED 1 SACK FLOUR BEFORE 8')).code, 200)
+    assert.equal((await m.send(who, 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   }
   await m.clock(1)
   assert.equal((await m.state()).messages.filter(message => message.to === 'room').length, 0)
-  assert.equal((await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 8')).code, 200)
+  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   await m.clock(1)
   await m.clock(1)
   const dispatches = (await m.state()).messages.filter(message => message.to === 'room')
-  assert.deepEqual(dispatches.map(message => message.text), ['flour, Local: 5 asked, 0 filled in 2h.'])
+  assert.deepEqual(dispatches.map(message => message.text), ['eggs, Local: 5 asked, 0 filled in 2h.'])
   const url = `/api/demo/markets/${m.marketId}/shortages`
   assert.equal((await m.server.inject({ method: 'GET', url })).statusCode, 401)
   const { shortages } = (await m.server.inject({ method: 'GET', url, headers: m.auth })).json()
@@ -221,9 +221,9 @@ test('five unmet asks generate exactly one aggregate coordinator alert in the wi
 test('a seller can pause and resume future invitations', async () => {
   const m = await market()
   assert.equal((await m.send('ellis', 'STOP')).code, 200)
-  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 8')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   assert.ok(!(await m.state()).requests.find(request => request.code === 'E8').invitedSellers.includes('ellis'))
   assert.equal((await m.send('ellis', 'START')).code, 200)
-  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 8')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 8')).code, 200)
   assert.ok((await m.state()).requests.find(request => request.code === 'E9').invitedSellers.includes('ellis'))
 })

@@ -304,7 +304,7 @@
     actionSignature = newActions;
     const holdActions = available.map(offer => [
       offer.ref + ' ' + offer.requestCode + (offer.revision > 1 ? ' V' + offer.revision : ''),
-      'Hold ' + offer.sellerAlias + ' · ' + credits.format(offer.priceCents / 100) + ' credits' +
+      'Hold ' + offer.sellerAlias + ' · ' + credits.format(offer.priceKobo / 100) + ' credits' +
         (available.some(other => other.requestCode !== offer.requestCode) ? ' · ' + offer.requestCode : ''),
     ]);
     const held = own.filter(request => request.state === 'held');
