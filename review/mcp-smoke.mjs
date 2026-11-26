@@ -36,7 +36,7 @@ try {
   assert.ok(events.some(event => event.type === 'offer_made'))
   // Claude (22 Nov): at most 3 open requests per trader, so the asks come from two traders.
   for (let index = 0; index < 4; index++) {
-    await call('market_send', { marketId, alias: index < 2 ? 'mara' : 'jules', text: 'NEED 1 CRATE EGGS BEFORE 8',
+    await call('market_send', { marketId, alias: index < 2 ? 'mara' : 'jules', text: 'NEED 1 SACK FLOUR BEFORE 8',
       providerMessageId: 'mcp-shortage-' + index })
   }
   await call('market_advance_clock', { marketId, minutes: 10 })

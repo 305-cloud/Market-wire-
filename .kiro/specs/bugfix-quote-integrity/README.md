@@ -19,7 +19,7 @@ Tests live in: `.build-input/repro.test.mjs`
 - Mara sends "1" → should succeed (Ellis's offer not revised)
 
 ### Bug 2: Credit parsing
-- Type "4200" → parses to 420000 kobo
+- Type "4200" → parses to 420000 cents
 - Type "0" → rejects
 - Type "10000001" → rejects (exceeds 1M cap)
 

@@ -53,7 +53,7 @@ export interface OfferRecord {
   requestCode: RequestCode
   crateId: CrateId
   sellerId: TraderId
-  priceKobo: number
+  priceCents: number
   pickupArea: string
   replyRef: string // "1", "2", etc. — per-request sequential
   revision: number // incremented on price change; a stale revision cannot accept
@@ -96,7 +96,7 @@ export interface DispatchRecord {
 export interface PriceRecord {
   item: Item
   circleId: CircleId   // circle of the original requester
-  priceKobo: number    // from the accepted offer at collection time
+  priceCents: number    // from the accepted offer at collection time
   collectedAt: Date    // from the request_collected event's `at` field
 }
 

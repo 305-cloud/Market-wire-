@@ -56,7 +56,7 @@ function createRequest(state: MarketState, requesterId: string): { state: Market
 // Helper to make an offer
 // ---------------------------------------------------------------------------
 
-function makeOffer(state: MarketState, requestCode: string, sellerId: string, priceKobo: number, replyRef: string): MarketState {
+function makeOffer(state: MarketState, requestCode: string, sellerId: string, priceCents: number, replyRef: string): MarketState {
   const offerEv = {
     type: 'offer_made' as const,
     workspaceId: 'ws-test',
@@ -64,7 +64,7 @@ function makeOffer(state: MarketState, requestCode: string, sellerId: string, pr
     requestCode,
     crateId: `crate-${sellerId}`,
     sellerId,
-    priceKobo,
+    priceCents,
     pickupArea: 'Cedar Lane',
     replyRef,
     revision: 1,
@@ -107,7 +107,7 @@ describe('resolveTarget bare "1"', () => {
       workspaceId: 'ws-test',
       offerId: firstOffer.id,
       requestCode: code,
-      priceKobo: 500000,
+      priceCents: 500000,
       pickupArea: 'Cedar Lane',
       revision: 2,
       at: T0,
@@ -230,7 +230,7 @@ describe('getPendingOffers', () => {
     expect(pending).toEqual({
       requestCode: code,
       offers: [
-        { ref: '1', sellerAlias: 'Ellis', priceKobo: 420000, pickupArea: 'Cedar Lane' },
+        { ref: '1', sellerAlias: 'Ellis', priceCents: 420000, pickupArea: 'Cedar Lane' },
       ],
     })
   })

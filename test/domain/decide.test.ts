@@ -92,7 +92,7 @@ describe('R_accept_one_hold', () => {
 
     // Ellis offers
     const offer1 = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     expect(offer1.ok).toBe(true)
     if (!offer1.ok) throw new Error()
@@ -100,7 +100,7 @@ describe('R_accept_one_hold', () => {
 
     // Casey offers
     const offer2 = decide(state, {
-      kind: 'offer', by: 'casey', requestCode: code, priceKobo: 400000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'casey', requestCode: code, priceCents: 400000, pickupArea: 'Cedar Lane',
     }, T0)
     expect(offer2.ok).toBe(true)
     if (!offer2.ok) throw new Error()
@@ -171,7 +171,7 @@ describe('R_taken', () => {
 
     // Ellis offers to both requests (same crate will be reused)
     const o1 = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: codeE1, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: codeE1, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     expect(o1.ok).toBe(true)
     if (!o1.ok) throw new Error()
@@ -180,7 +180,7 @@ describe('R_taken', () => {
     // Ellis invites herself to E2 — but Ellis isn't invited to Jules's E2 yet
     // We need to invite Ellis; she's in circle-A with Jules so she was auto-invited
     const o2 = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: codeE2, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: codeE2, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     expect(o2.ok).toBe(true)
     if (!o2.ok) throw new Error()
@@ -227,7 +227,7 @@ describe('R_done_idempotent', () => {
 
     // Ellis offers
     const o = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o.ok) throw new Error()
     state = o.events.reduce(evolve, state)
@@ -270,7 +270,7 @@ describe('R_closed_after_cutoff', () => {
     state = s1
 
     const o = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o.ok) throw new Error()
     state = o.events.reduce(evolve, state)
@@ -310,7 +310,7 @@ describe('R_no_coordinator_before_widen', () => {
 
     // Offer
     const o = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o.ok) throw new Error()
     for (const ob of o.outbound) {
@@ -371,7 +371,7 @@ describe('R_stale_revision', () => {
 
     // Ellis offers at 4200
     const o1 = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o1.ok) throw new Error()
     state = o1.events.reduce(evolve, state)
@@ -381,7 +381,7 @@ describe('R_stale_revision', () => {
 
     // Ellis revises to 5000
     const o2 = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 500000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 500000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o2.ok) throw new Error()
     state = o2.events.reduce(evolve, state)
@@ -468,7 +468,7 @@ describe('R_replay_invariant', () => {
 
     // Offer
     const o = decide(state, {
-      kind: 'offer', by: 'ellis', requestCode: code, priceKobo: 420000, pickupArea: 'Cedar Lane',
+      kind: 'offer', by: 'ellis', requestCode: code, priceCents: 420000, pickupArea: 'Cedar Lane',
     }, T0)
     if (!o.ok) throw new Error()
     allEvents.push(...o.events)

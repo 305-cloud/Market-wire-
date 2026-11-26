@@ -36,7 +36,7 @@ function market() {
     },
     offer(requestCode) {
       return this.send({
-        kind: 'offer', by: 'ellis', requestCode, priceKobo: 420000,
+        kind: 'offer', by: 'ellis', requestCode, priceCents: 420000,
         pickupArea: 'Local', pickupDirections: 'Stall 4',
       })
     },
@@ -86,7 +86,7 @@ test('2,500 seeded stock races preserve single holds, collection and event repla
       const offer = [...wire.state.offers.values()].find(entry =>
         entry.requestCode === requestCode && entry.state === 'proposed')
       if (action === 'offer') {
-        wire.send({ kind: 'offer', by: 'ellis', requestCode, priceKobo: 420000, pickupArea: 'Local' }, now)
+        wire.send({ kind: 'offer', by: 'ellis', requestCode, priceCents: 420000, pickupArea: 'Local' }, now)
       } else if (action === 'accept' && offer) {
         wire.send({ kind: action, by, requestCode, offerRef: offer.replyRef, offerRevision: offer.revision }, now)
       } else if (action === 'collect' || action === 'cancel') {

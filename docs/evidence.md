@@ -264,3 +264,13 @@ What held:
 - Repros 8/8.
 - API smoke and MCP smoke passed.
 - The browser desk loads with all 9 rules holding and no console errors.
+
+## Global catalogue (26 November)
+
+Author: Claude, not Kiro (Kiro credits were not available). The demo was framed around one buyer and one product (a crate of eggs) with Nigerian currency and phrasing. This change makes it work for small businesses anywhere:
+
+- `src/domain/catalog.ts` (new, pure): flour, rice, sugar (25 kg sack), cooking gas (13 kg cylinder), cooking oil (20 litre can), coffee (1 kg bag), eggs (tray of 30), milk (crate of 12 litres). Each item has one trade unit and names in several languages.
+- The request parser, the server's item check and every message take the item and unit from the catalogue. The demo shortage is now Mara's bakery needing 1 sack of flour.
+- Prices: the internal field is `priceCents` (was `priceKobo`). A seller may type $, €, £, ₹, ₦, KES and other signs; the market keeps the number as credits. The privacy rule (I8) now catches any currency sign and any international phone number, not only Nigerian ones.
+- The reader adds command and item words in Spanish, French, Portuguese, Swahili, Hindi/Urdu and German alongside the existing Pidgin, and keeps accented letters.
+- Tests: `test/domain/catalog.test.ts` (7 new) and a GLOBAL end-to-end case in `review/claude-fixes.test.mjs`. Results: 102/102 Vitest, 69/69 Node, API smoke and MCP smoke passed.

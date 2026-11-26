@@ -62,7 +62,7 @@ test('FIX-2b: under 5 wrong codes the right code still works', async () => {
 
 test('FIX-3: one shortage alert per circle and item per 120 minutes, across clock-bucket edges', async () => {
   const m = await market()
-  for (const who of ['jules', 'jules', 'ellis', 'ellis']) assert.equal((await m.send(who, 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 200)
+  for (const who of ['jules', 'jules', 'ellis', 'ellis']) assert.equal((await m.send(who, 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 200)
   const alerts = async () => (await m.inbox('coordinator')).filter(x => /asked/.test(x.text)).length
   await m.clock(50); assert.equal(await alerts(), 1)
   await m.clock(15); assert.equal(await alerts(), 1, 'no repeat at the 16:00 UTC bucket edge')
@@ -72,11 +72,11 @@ test('FIX-3: one shortage alert per circle and item per 120 minutes, across cloc
 test('FIX-3b: a shortage that persists past 120 minutes can alert again', async () => {
   const m = await market()
   // Wave 1 closes at 17:00; wave 2 starts after it, so nobody passes the 3-open-request cap.
-  for (const who of ['jules', 'ellis', 'jules', 'ellis']) assert.equal((await m.send(who, 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 200)
+  for (const who of ['jules', 'ellis', 'jules', 'ellis']) assert.equal((await m.send(who, 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 200)
   await m.clock(10)
   const n1 = (await m.inbox('coordinator')).filter(x => /asked/.test(x.text)).length
   await m.clock(125)
-  for (const who of ['jules', 'ellis', 'jules', 'ellis', 'mara']) assert.equal((await m.send(who, 'NEED 1 CRATE EGGS BEFORE 11PM')).code, 200)
+  for (const who of ['jules', 'ellis', 'jules', 'ellis', 'mara']) assert.equal((await m.send(who, 'NEED 1 SACK FLOUR BEFORE 11PM')).code, 200)
   await m.clock(10)
   const n2 = (await m.inbox('coordinator')).filter(x => /asked/.test(x.text)).length
   assert.equal(n1, 1); assert.equal(n2, 2)
@@ -102,31 +102,31 @@ test('MINOR: a repeated "1 E7" after holding says "you already hold"', async () 
   const { m } = await held()
   const r = await m.send('mara', '1 E7')
   assert.equal(r.body.reason, 'already_held')
-  assert.match((await m.inbox('mara')).at(-1).text, /already hold a crate/)
+  assert.match((await m.inbox('mara')).at(-1).text, /already hold stock on this request/)
 })
 
 // ---- Fixes from the first-use (consumer) review, 22 Nov ----
 
 test('UX: 24-hour times work ("before 18:00")', async () => {
   const m = await market()
-  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 18:00')).code, 200)
+  assert.equal((await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 18:00')).code, 200)
   const e8 = (await m.state()).requests.find(r => r.code === 'E8')
   assert.equal(e8.cutoffAt, '2026-11-20T18:00:00.000Z')
 })
 
-test('UX: one crate per request, said plainly', async () => {
+test('UX: one unit per request, said plainly', async () => {
   const m = await market()
-  assert.equal((await m.send('jules', 'NEED 3 CRATES EGGS BEFORE 5PM')).code, 400)
-  assert.match((await m.inbox('jules')).at(-1).text, /one crate per request/)
-  assert.equal((await m.send('jules', 'need 1 tray eggs before 5pm')).code, 200, 'tray means crate')
+  assert.equal((await m.send('jules', 'NEED 3 SACKS FLOUR BEFORE 5PM')).code, 400)
+  assert.match((await m.inbox('jules')).at(-1).text, /one sack, tray or cylinder per request/)
+  assert.equal((await m.send('jules', 'need 1 tray eggs before 5pm')).code, 200, 'any unit word is accepted')
 })
 
-test('UX: offers say 1 crate and the price; seller is told the offer went out', async () => {
+test('UX: offers say 1 sack and the price; seller is told the offer went out', async () => {
   const m = await market()
   assert.equal((await m.send('ellis', 'E7 4,300 Cedar Lane')).code, 200)
-  assert.match((await m.inbox('mara')).at(-1).text, /Ellis offers 1 crate for 4,300 credits/)
+  assert.match((await m.inbox('mara')).at(-1).text, /Ellis offers 1 sack for 4,300 credits/)
   assert.match((await m.inbox('ellis')).at(-1).text, /your offer of 4,300 credits at Cedar Lane went to the buyer/)
-  assert.equal((await m.send('jules', 'E7 N4100 Oak Row')).code, 200)
+  assert.equal((await m.send('jules', 'E7 $4100 Oak Row')).code, 200)
   assert.match((await m.inbox('mara')).at(-1).text, /4,100 credits/)
 })
 
@@ -139,7 +139,7 @@ test('UX: a number before the price is not read as the price', async () => {
 
 test('UX: with two open requests, offers name the request in the reply', async () => {
   const m = await market()
-  await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')
+  await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5PM')
   await m.send('ellis', 'E8 4200 Cedar Lane')
   assert.match((await m.inbox('mara')).at(-1).text, /Reply 1 E8 to hold/)
 })
@@ -207,7 +207,7 @@ test('STRESS: "Done thanks", "CANCEL PLS", "Stop please" are the command, not a 
 test('STRESS: "before 1am" late in the evening means tomorrow; 24-hour times work', async () => {
   const m = await market()
   await m.clock(510) // 23:30
-  assert.equal((await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 1AM')).code, 200)
+  assert.equal((await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 1AM')).code, 200)
   assert.equal((await m.state()).requests.at(-1).cutoffAt, '2026-11-21T01:00:00.000Z')
 })
 
@@ -220,10 +220,10 @@ test('STRESS: free text, zero, huge and unknown items do not create requests', a
 
 test('STRESS: the coordinator cannot create requests; a trader keeps at most 3 open', async () => {
   const m = await market()
-  assert.equal((await m.send('coordinator', 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 400)
-  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 200)
-  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 200)
-  assert.equal((await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')).code, 400)
+  assert.equal((await m.send('coordinator', 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 400)
+  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 200)
+  assert.equal((await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5PM')).code, 400)
   assert.match((await m.inbox('mara')).at(-1).text, /already have 3 open requests/)
 })
 
@@ -241,7 +241,7 @@ test('STRESS: a revised quote gets the current-offer reply; bare "1" with two op
   await m.send('ellis', 'E7 4200 Cedar Lane'); await m.send('ellis', 'E7 5000 Cedar Lane')
   await m.send('mara', '1')
   assert.match((await m.inbox('mara')).at(-1).text, /that offer changed\. The current offer is 1 E7 v2/)
-  await m.send('mara', 'NEED 1 CRATE EGGS BEFORE 5PM')
+  await m.send('mara', 'NEED 1 SACK FLOUR BEFORE 5PM')
   await m.send('mara', '1')
   assert.match((await m.inbox('mara')).at(-1).text, /1 E7 or 1 E8/)
 })
@@ -250,7 +250,7 @@ test('STRESS: the losing seller is told plainly; no stranger learns a request st
   const m = await market()
   await m.send('ellis', 'E7 4200 Cedar Lane'); await m.send('jules', 'E7 4100 Oak Row')
   await m.send('mara', '2')
-  assert.match((await m.inbox('ellis')).at(-1).text, /the buyer chose another offer\. Your crate is free\./)
+  assert.match((await m.inbox('ellis')).at(-1).text, /the buyer chose another offer\. Your stock is free\./)
   await m.send('rowan', 'E7 4300 North gate')
   assert.match((await m.inbox('rowan')).at(-1).text, /not one you can act on/)
 })
@@ -258,14 +258,14 @@ test('STRESS: the losing seller is told plainly; no stranger learns a request st
 test('STRESS: no "no crate held" warning one minute after a request is made', async () => {
   const m = await market()
   await m.clock(165)
-  await m.send('jules', 'NEED 1 CRATE EGGS BEFORE 6PM')
+  await m.send('jules', 'NEED 1 SACK FLOUR BEFORE 6PM')
   await m.clock(1)
   assert.ok(!(await m.inbox('jules')).some(x => /no crate held yet/.test(x.text)))
 })
 
 test('STRESS: requests the buyer cancelled do not count towards a shortage alert', async () => {
   const m = await market()
-  for (let i = 0; i < 2; i++) for (const who of ['jules', 'ellis']) { await m.send(who, 'NEED 1 CRATE EGGS BEFORE 5PM') }
+  for (let i = 0; i < 2; i++) for (const who of ['jules', 'ellis']) { await m.send(who, 'NEED 1 SACK FLOUR BEFORE 5PM') }
   for (const [who, code] of [['jules', 'E8'], ['ellis', 'E9'], ['jules', 'E10'], ['ellis', 'E11']]) await m.send(who, `CANCEL ${code}`)
   await m.clock(10)
   assert.equal((await m.inbox('coordinator')).filter(x => /asked/.test(x.text)).length, 0)
@@ -292,7 +292,7 @@ test('READER: an unsure text is offered back, and YES sends it; anything else dr
   const m = await market()
   const r = await m.send('jules', 'any eggs b4 5')
   assert.equal(r.body.reason, 'did_you_mean')
-  assert.match((await m.inbox('jules')).at(-1).text, /Did you mean: NEED 1 CRATE EGGS BEFORE 5\? Reply YES/)
+  assert.match((await m.inbox('jules')).at(-1).text, /Did you mean: NEED 1 TRAY EGGS BEFORE 5\? Reply YES/)
   const before = (await m.state()).requests.length
   assert.equal((await m.send('jules', 'yes')).code, 200)
   assert.equal((await m.state()).requests.length, before + 1)
@@ -334,10 +334,10 @@ test('ROUND2: STATUS (and "my code", "wetin dey happen") lists what is open, wit
   const { m, code } = await held()
   for (const t of ['status', 'my code?', 'wetin dey happen']) {
     assert.equal((await m.send('mara', t)).code, 200, t)
-    assert.match((await m.inbox('mara')).at(-1).text, new RegExp(`E7 1 crate eggs till [0-9]{2}:[0-9]{2}: held from Ellis .*pickup code ${code}`))
+    assert.match((await m.inbox('mara')).at(-1).text, new RegExp(`E7 1 sack flour till [0-9]{2}:[0-9]{2}: held from Ellis .*pickup code ${code}`))
   }
   await m.send('ellis', 'status')
-  assert.match((await m.inbox('ellis')).at(-1).text, /E7: the buyer holds your crate/)
+  assert.match((await m.inbox('ellis')).at(-1).text, /E7: the buyer holds your sack/)
   assert.ok(!(await m.inbox('ellis')).some(x => x.text.includes(`code ${code}`)), 'the seller never sees the code')
 })
 
@@ -348,7 +348,7 @@ test('ROUND2: hints say what is missing', async () => {
   await m.send('ellis', 'i get egg 1 crate 3200 for shop 4')
   assert.match((await m.inbox('ellis')).at(-1).text, /Is this an offer for E7\? Reply E7 3200 <pickup place>/)
   await m.send('jules', 'need 1 crate tomato before 5pm')
-  assert.match((await m.inbox('jules')).at(-1).text, /eggs and milk/)
+  assert.match((await m.inbox('jules')).at(-1).text, /finds flour, rice, sugar, gas, oil, coffee, eggs, milk/)
   await m.send('jules', 'need eggs')
   assert.match((await m.inbox('jules')).at(-1).text, /Add a time/)
 })
@@ -358,7 +358,7 @@ test('ROUND2: 4.5k prices, milk units for sellers, routed notice, seller DONE an
   assert.equal((await m.send('ellis', 'E7 4.5k Cedar Lane')).code, 200)
   assert.match((await m.inbox('mara')).at(-1).text, /4,500 credits/)
   assert.equal((await m.send('jules', 'NEED 1 CRATE MILK BEFORE 6PM')).code, 200)
-  assert.match((await m.inbox('ellis')).at(-1).text, /spare 1 bottle milk .* price for 1 bottle/)
+  assert.match((await m.inbox('ellis')).at(-1).text, /spare 1 crate milk .* price for 1 crate/)
   await m.send('ellis', 'DONE')
   assert.match((await m.inbox('ellis')).at(-1).text, /Sellers confirm a handover with GIVEN/)
   await m.send('mara', 'WIDEN E7')
@@ -408,7 +408,7 @@ test('STRESS3: "ok thanks" is not YES; suggestions lapse; WIDEN on a held reques
   assert.notEqual((await m.send('mara', 'yes')).code, 200)
   assert.equal(await m.e7(), 'held')
   await m.send('mara', 'WIDEN E7')
-  assert.match((await m.inbox('mara')).at(-1).text, /E7: you already hold a crate, so there is nothing to widen/)
+  assert.match((await m.inbox('mara')).at(-1).text, /E7: you already hold stock on this request, so there is nothing to widen/)
   assert.equal((await m.send('mara', 'e7 done')).code, 200)
   assert.equal(await m.e7(), 'collected')
 })
@@ -465,4 +465,17 @@ test('FINAL: strangers get one reason for unknown and unshared requests; ids rej
   assert.equal((await send('jules', 'HELP', 'id\u0000x')).statusCode, 400)
   assert.equal((await send('jules', 'HELP', randomUUID(), 'bearer')).statusCode, 200)
   assert.equal((await send('jules', 'HELP', randomUUID(), 'Basic')).statusCode, 401)
+})
+
+// Global catalogue (26 Nov): any staple from the catalogue, typed in several languages.
+test('GLOBAL: a Spanish request for gas reaches sellers as a cylinder; unknown items list the catalogue', async () => {
+  const m = await market()
+  assert.equal((await m.send('jules', 'NEED 1 CYLINDER GAS BEFORE 6PM')).code, 200)
+  assert.match((await m.inbox('ellis')).at(-1).text, /spare 1 cylinder gas needed by 18:00\. .*price for 1 cylinder/)
+  const r = await m.send('jules', 'necesito 1 saco de harina antes 5pm')
+  assert.ok(r.code === 200 || r.body.reason === 'did_you_mean', JSON.stringify(r.body))
+  if (r.code !== 200) assert.equal((await m.send('jules', 'yes')).code, 200)
+  assert.ok((await m.state()).requests.some(q => q.requesterAlias !== 'Mara' && /flour/.test(JSON.stringify(q))))
+  assert.equal((await m.send('jules', 'NEED 1 CRATE TOMATOES BEFORE 5PM')).code, 400)
+  assert.match((await m.inbox('jules')).at(-1).text, /Market Wire finds flour, rice, sugar, gas, oil, coffee, eggs, milk/)
 })

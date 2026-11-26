@@ -1,6 +1,8 @@
 # Market Wire
 
-Market Wire helps a buyer find a spare crate after their usual supplier runs out. Local sellers get the first chance to help. The buyer decides if the shortage goes to a coordinator.
+Market Wire helps a small business anywhere find spare stock (a sack of flour, a cylinder of cooking gas, a tray of eggs) after its usual supplier runs out, using plain text messages. Nearby sellers get the first chance to help. The buyer decides if the shortage goes to a coordinator.
+
+It resurrects the idea behind Chile's 1972 Cybersyn telex network: short messages, a shared room, and early warning of shortages. The catalogue is in `src/domain/catalog.ts`; traders can type in English, Spanish, French, Portuguese, Swahili, Hindi/Urdu or Pidgin shorthand.
 
 ## Start the local simulator
 

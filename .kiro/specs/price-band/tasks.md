@@ -1,7 +1,7 @@
 # Price Band tasks
 
 - [x] Add `PriceRecord` interface and `priceHistory: PriceRecord[]` field to `MarketState` in `src/domain/types.ts`. Initialise it to `[]` in `emptyMarketState`.
-- [x] Update `evolve` in `src/domain/evolve.ts` to handle `request_collected` by appending a `PriceRecord` to `priceHistory`. Derive `item` from the request, `circleId` from the requester's trader record, `priceKobo` from the accepted offer, and `collectedAt` from the event's `at` field.
+- [x] Update `evolve` in `src/domain/evolve.ts` to handle `request_collected` by appending a `PriceRecord` to `priceHistory`. Derive `item` from the request, `circleId` from the requester's trader record, `priceCents` from the accepted offer, and `collectedAt` from the event's `at` field.
 - [x] Create `src/domain/price-band.ts` with the `priceBand` function using nearest-rank 25th/75th percentiles. Return `null` for fewer than 3 trades.
 - [x] Update `src/messages/templates.ts`: add optional `bandLine` variable to `offer_received`. When present, append it after a newline. Keep the template within 160 GSM-7 septets for the longest sample values.
 - [x] Update `decide`'s `decideOffer` function in `src/domain/decide.ts`: call `priceBand` using the request's `item` and the requester's `circleId`, then set `bandLine` on the `offer_received` intent when the result is non-null. Apply the same change to the revised-offer path.

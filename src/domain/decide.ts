@@ -51,8 +51,8 @@ function intent(
   return { to, template, vars, dedupeKey, body: renderTemplate(template, vars) }
 }
 
-function fmt(kobo: number): string {
-  return (kobo / 100).toLocaleString('en', { maximumFractionDigits: 0 })
+function fmt(cents: number): string {
+  return (cents / 100).toLocaleString('en', { maximumFractionDigits: 0 })
 }
 
 function recordLabel(state: MarketState, trader: TraderId, includeMissed = false): string {
@@ -232,7 +232,7 @@ function decideOffer(
         workspaceId: state.workspaceId,
         offerId: existingOffer.id,
         requestCode: cmd.requestCode,
-        priceKobo: cmd.priceKobo,
+        priceCents: cmd.priceCents,
         pickupArea: cmd.pickupArea,
         revision: newRevision,
         at: now,
@@ -244,7 +244,7 @@ function decideOffer(
         sellerAlias: seller.alias,
         qty: req.quantity,
         unit: req.item.unit,
-        priceDisplay: fmt(cmd.priceKobo),
+        priceDisplay: fmt(cmd.priceCents),
         area: cmd.pickupArea,
         cutoff: fmtTime(req.cutoffAt),
         ref: `${existingOffer.replyRef} ${cmd.requestCode} v${newRevision}`,
@@ -281,7 +281,7 @@ function decideOffer(
       requestCode: cmd.requestCode,
       crateId,
       sellerId: cmd.by,
-      priceKobo: cmd.priceKobo,
+      priceCents: cmd.priceCents,
       pickupArea: cmd.pickupArea,
       replyRef: nextRef,
       revision: 1,
@@ -300,7 +300,7 @@ function decideOffer(
       sellerAlias: seller.alias,
       qty: req.quantity,
       unit: req.item.unit,
-      priceDisplay: fmt(cmd.priceKobo),
+      priceDisplay: fmt(cmd.priceCents),
       area: cmd.pickupArea,
       cutoff: fmtTime(req.cutoffAt),
       // Claude fix (22 Nov): with two open requests a bare "1" is ambiguous, so the offer names its request.

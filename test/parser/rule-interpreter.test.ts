@@ -98,7 +98,7 @@ describe('interpretCommand offer', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
 
@@ -133,7 +133,7 @@ describe('interpretCommand offer', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
     const offer1Result = interpretCommand(offer1Cmd, state, T0)
@@ -145,7 +145,7 @@ describe('interpretCommand offer', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 500000,
+      priceCents: 500000,
       pickupArea: 'Cedar Lane',
     }
     const result = interpretCommand(offer2Cmd, state, T0)
@@ -153,7 +153,7 @@ describe('interpretCommand offer', () => {
 
     const offers = [...result.nextState!.offers.values()]
     expect(offers).toHaveLength(1)
-    expect(offers[0]?.priceKobo).toBe(500000)
+    expect(offers[0]?.priceCents).toBe(500000)
     expect(offers[0]?.revision).toBe(2)
   })
 })
@@ -183,7 +183,7 @@ describe('interpretCommand accept', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
     const offerResult = interpretCommand(offerCmd, state, T0)
@@ -226,7 +226,7 @@ describe('interpretCommand accept', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
     const offerResult = interpretCommand(offerCmd, state, T0)
@@ -240,7 +240,7 @@ describe('interpretCommand accept', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 500000,
+      priceCents: 500000,
       pickupArea: 'Cedar Lane',
     }
     const reviseResult = interpretCommand(reviseCmd, state, T0)
@@ -286,7 +286,7 @@ describe('interpretCommand collect', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
     const offerResult = interpretCommand(offerCmd, state, T0)
@@ -334,7 +334,7 @@ describe('interpretCommand collect', () => {
       kind: 'offer',
       by: 'ellis',
       requestCode: 'E1',
-      priceKobo: 420000,
+      priceCents: 420000,
       pickupArea: 'Cedar Lane',
     }
     const offerResult = interpretCommand(offerCmd, state, T0)
